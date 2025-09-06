@@ -6,7 +6,8 @@
     "dev": "vite --open",
     "build": "vite build",
     "serve": "vite preview",
-    "setup-db": "node setup_database.js"
+    "setup-db": "node setup_database.js",
+    "setup-auth": "node setup_auth.js"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

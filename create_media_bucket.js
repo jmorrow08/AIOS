@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // You'll need this for bucket creation
@@ -24,7 +24,7 @@ async function createMediaBucket() {
     const { data, error } = await supabase.storage.createBucket('media', {
       public: true, // Make bucket public for easier access
       allowedMimeTypes: ['image/*', 'video/*'],
-      fileSizeLimit: 104857600, // 100MB limit
+      fileSizeLimit: 52428800, // 50MB limit
     });
 
     if (error) {
