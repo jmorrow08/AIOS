@@ -100,5 +100,57 @@ INSERT INTO public.company_config (key, value, description, category, is_enabled
     'Budget alert thresholds as percentages',
     'billing',
     true
+  ),
+  (
+    'slack_integration',
+    '{
+      "webhook_url": null,
+      "channel": "#general",
+      "enabled_events": ["budget", "invoice", "deliverable", "system"],
+      "mention_users": []
+    }'::jsonb,
+    'Slack webhook integration for notifications',
+    'integrations',
+    false
+  ),
+  (
+    'discord_integration',
+    '{
+      "webhook_url": null,
+      "username": "AI OS Bot",
+      "avatar_url": null,
+      "enabled_events": ["budget", "invoice", "deliverable", "system"]
+    }'::jsonb,
+    'Discord webhook integration for notifications',
+    'integrations',
+    false
+  ),
+  (
+    'email_integration',
+    '{
+      "provider": "sendgrid",
+      "api_key": null,
+      "from_email": null,
+      "from_name": "AI OS",
+      "enabled_events": ["budget", "invoice", "deliverable", "message"],
+      "template_ids": {}
+    }'::jsonb,
+    'Email provider configuration for notifications',
+    'integrations',
+    false
+  ),
+  (
+    'sms_integration',
+    '{
+      "provider": "twilio",
+      "api_key": null,
+      "account_sid": null,
+      "phone_number": null,
+      "enabled_events": ["budget", "invoice", "deliverable"],
+      "country_codes": ["+1"]
+    }'::jsonb,
+    'SMS provider configuration for notifications',
+    'integrations',
+    false
   )
 ON CONFLICT (key) DO NOTHING;

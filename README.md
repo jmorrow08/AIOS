@@ -12,6 +12,7 @@ A comprehensive **Multi-Tenant React + Vite** application for AI Business System
 - **AI Lab**: AI agent configuration and management
 - **Media Studio**: AI-powered media generation (Image/Video/Audio)
 - **Knowledge Library**: Document management and RAG search
+- **Compliance Panel**: Security policies, GDPR compliance, and data retention
 - **Admin Portal**: Business analytics and client management
 - **Admin Settings**: System configuration and webhook management
 
@@ -29,6 +30,16 @@ A comprehensive **Multi-Tenant React + Vite** application for AI Business System
 - **Row Level Security**: PostgreSQL RLS policies for secure access
 - **Company-Specific Billing**: Individual usage tracking and limits
 - **Stripe Customer Portal**: Self-service billing management
+
+### Compliance & Security
+
+- **Security Policies**: Company-specific security configurations
+- **IP Access Control**: Restrict login access to approved IP ranges
+- **API Key Management**: Encrypted storage with rotation policies
+- **GDPR Compliance**: Data export, deletion, and access requests
+- **Data Retention**: Automated cleanup of old data with configurable policies
+- **Audit Logging**: Comprehensive security event tracking
+- **Compliance Requests**: Self-service GDPR/CCPA request management
 
 ### Business Tools
 
@@ -102,6 +113,11 @@ This creates the following multi-tenant tables:
 - `public.ai_agents` - Company-scoped AI agent configurations
 - `public.agent_logs` - Company-specific AI interaction logging
 - `public.api_usage` - Company-specific API usage tracking
+- `public.security_policies` - Company-specific security and compliance policies
+- `public.compliance_requests` - GDPR/CCPA compliance request tracking
+- `public.data_retention_logs` - Automated data cleanup monitoring
+- `public.api_keys` - Encrypted API key storage with rotation tracking
+- `public.audit_logs` - Comprehensive security event logging
 
 ### 4. Supabase Configuration
 
@@ -154,6 +170,8 @@ src/
 │   ├── services.ts        # Service management
 │   ├── mediaAssets.ts     # Media asset management
 │   ├── companyConfig.ts   # Configuration management
+│   ├── compliance.ts      # Security policies and GDPR compliance
+│   ├── security.ts        # API key management and audit logging
 │   ├── hooks.ts          # Webhook automation system
 │   └── hooks.example.ts  # Integration examples
 ├── components/            # Reusable UI components
@@ -175,6 +193,8 @@ src/
 ├── pages/                # Page components
 │   ├── AdminPortal.tsx   # Admin dashboard
 │   ├── AdminSettings.tsx # System configuration
+│   ├── Compliance.tsx    # Security policies and GDPR compliance
+│   ├── SecurityPanel.tsx # API key management and audit logs
 │   ├── MediaStudio.tsx   # AI media generation
 │   ├── AiLab.tsx        # AI agent management
 │   ├── FinancialNexus.tsx # Financial management
@@ -183,7 +203,9 @@ src/
 │   ├── MissionControl.tsx   # Main dashboard
 │   └── ...
 └── utils/                # Utility functions
-    └── rag.ts           # RAG search implementation
+    ├── rag.ts           # RAG search implementation
+    ├── dataRetentionJob.ts # Automated data cleanup and compliance jobs
+    └── ...
 ```
 
 ## 🎨 UI Components
@@ -304,7 +326,9 @@ npm run dev          # Start development server
 npm run build        # Build for production
 npm run preview      # Preview production build
 npm run setup-db     # Run database setup
-npm run lint         # Run ESLint
+npm run setup-auth   # Configure authentication
+node seed_security_data.js    # Seed security panel data
+node seed_compliance_data.js  # Seed compliance policies and data
 ```
 
 ### Key Dependencies
@@ -354,10 +378,12 @@ STRIPE_PORTAL_CONFIG_ID=... # Configure in Stripe Customer Portal settings
 
 - **[Agent System](./src/agents/README.md)**: AI agent orchestration details
 - **[Multi-Tenant Architecture](./MULTI_TENANT_README.md)**: Company isolation and RLS
+- **[Compliance & Security](./COMPLIANCE_README.md)**: Security policies and GDPR compliance
 - **[Stripe Billing Integration](./STRIPE_BILLING_README.md)**: Payment processing guide
 
 ### Feature Modules
 
+- **[Security Panel](./src/pages/SecurityPanel.tsx)**: API key management and audit logs
 - **[Webhook System](./HOOKS_README.md)**: Automation and webhook setup
 - **[Media Studio](./MEDIA_STUDIO_ENHANCED_README.md)**: AI media generation guide
 - **[Knowledge Library](./KNOWLEDGE_LIBRARY_README.md)**: Document management

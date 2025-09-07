@@ -29,9 +29,15 @@ The platform integrates Stripe for complete billing management, including custom
    - Invoice history and downloads
 
 4. **Usage-Based Billing**
+
    - Real-time API usage tracking
    - Company-specific budget limits
    - Automated billing alerts
+
+5. **Compliance Integration**
+   - Audit logging for all billing operations
+   - Integration with company security policies
+   - GDPR-compliant data handling for billing information
 
 ## Setup Instructions
 

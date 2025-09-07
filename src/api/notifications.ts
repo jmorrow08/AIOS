@@ -1,4 +1,10 @@
 import { supabase } from '@/lib/supabaseClient';
+import {
+  getSlackConfig,
+  getDiscordConfig,
+  getEmailConfig,
+  getSmsConfig,
+} from '@/api/companyConfig';
 
 // Notification types for the database
 export type NotificationType =
@@ -215,23 +221,45 @@ export const sendSlackNotification = async (
   message: string,
 ): Promise<ApiResponse<boolean>> => {
   try {
-    console.log('💬 Slack notification:', { channel, message });
+    const config = await getSlackConfig();
 
-    // Stub: In production, integrate with Slack API
-    /*
-    const slackService = new SlackService();
-    await slackService.send({
-      channel,
-      message,
+    if (!config?.enabled || !config.config?.webhook_url) {
+      console.warn('Slack integration not configured or disabled');
+      return { data: true, error: null }; // Don't fail silently
+    }
+
+    const payload = {
+      channel: channel || config.config.channel || '#general',
+      username: 'AI OS Bot',
+      text: message,
+      icon_emoji: ':robot_face:',
+    };
+
+    // Mention users if configured
+    if (config.config.mention_users && config.config.mention_users.length > 0) {
+      const mentions = config.config.mention_users.map((user: string) => `<@${user}>`).join(' ');
+      payload.text = `${mentions} ${message}`;
+    }
+
+    const response = await fetch(config.config.webhook_url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
-    */
 
+    if (!response.ok) {
+      throw new Error(`Slack webhook returned ${response.status}: ${response.statusText}`);
+    }
+
+    console.log('✅ Slack notification sent successfully');
     return {
       data: true,
       error: null,
     };
   } catch (error) {
-    console.error('Error sending Slack notification:', error);
+    console.error('❌ Error sending Slack notification:', error);
     return {
       data: null,
       error: error instanceof Error ? error.message : 'Failed to send Slack notification',
@@ -245,28 +273,48 @@ export const sendDiscordNotification = async (
   message: string,
 ): Promise<ApiResponse<boolean>> => {
   try {
-    console.log('🎮 Discord notification:', { webhookUrl, message });
+    const config = await getDiscordConfig();
 
-    // Stub: In production, integrate with Discord webhooks
-    /*
-    const discordService = new DiscordService();
-    await discordService.send({
-      webhookUrl,
-      embed: {
-        title: 'Notification',
-        description: message,
-        color: 0x0099ff, // Blue color
-        timestamp: new Date().toISOString(),
+    if (!config?.enabled || !config.config?.webhook_url) {
+      console.warn('Discord integration not configured or disabled');
+      return { data: true, error: null }; // Don't fail silently
+    }
+
+    const payload = {
+      username: config.config.username || 'AI OS Bot',
+      avatar_url: config.config.avatar_url,
+      embeds: [
+        {
+          title: 'AI OS Notification',
+          description: message,
+          color: 0x5d8bf4, // Cosmic accent color
+          timestamp: new Date().toISOString(),
+          footer: {
+            text: 'AI OS',
+          },
+        },
+      ],
+    };
+
+    const response = await fetch(config.config.webhook_url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(payload),
     });
-    */
 
+    if (!response.ok) {
+      throw new Error(`Discord webhook returned ${response.status}: ${response.statusText}`);
+    }
+
+    console.log('✅ Discord notification sent successfully');
     return {
       data: true,
       error: null,
     };
   } catch (error) {
-    console.error('Error sending Discord notification:', error);
+    console.error('❌ Error sending Discord notification:', error);
     return {
       data: null,
       error: error instanceof Error ? error.message : 'Failed to send Discord notification',
@@ -281,30 +329,225 @@ export const sendEmailNotification = async (
   body: string,
 ): Promise<ApiResponse<boolean>> => {
   try {
-    console.log('📧 Email notification:', { userId, subject, body });
+    const config = await getEmailConfig();
 
-    // Stub: In production, integrate with email service
-    /*
-    const emailService = new EmailService();
-    const userEmail = await getUserEmail(userId);
-    await emailService.send({
-      to: userEmail,
-      subject,
-      body,
-    });
-    */
+    if (!config?.enabled || !config.config?.api_key) {
+      console.warn('Email integration not configured or disabled');
+      return { data: true, error: null }; // Don't fail silently
+    }
 
+    // Get user email from profiles table
+    const { data: userProfile, error: userError } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !userProfile?.email) {
+      console.warn('User email not found:', userId);
+      return { data: false, error: 'User email not found' };
+    }
+
+    const provider = config.config.provider || 'sendgrid';
+    let response;
+
+    switch (provider.toLowerCase()) {
+      case 'sendgrid':
+        response = await sendSendGridEmail(
+          config.config.api_key,
+          config.config.from_email,
+          config.config.from_name || 'AI OS',
+          userProfile.email,
+          subject,
+          body,
+        );
+        break;
+
+      case 'mailgun':
+        response = await sendMailgunEmail(
+          config.config.api_key,
+          config.config.from_email,
+          userProfile.email,
+          subject,
+          body,
+        );
+        break;
+
+      default:
+        throw new Error(`Unsupported email provider: ${provider}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Email service returned ${response.status}: ${response.statusText}`);
+    }
+
+    console.log('✅ Email notification sent successfully');
     return {
       data: true,
       error: null,
     };
   } catch (error) {
-    console.error('Error sending email notification:', error);
+    console.error('❌ Error sending email notification:', error);
     return {
       data: null,
       error: error instanceof Error ? error.message : 'Failed to send email notification',
     };
   }
+};
+
+// Helper function for SendGrid
+const sendSendGridEmail = async (
+  apiKey: string,
+  fromEmail: string,
+  fromName: string,
+  toEmail: string,
+  subject: string,
+  body: string,
+): Promise<Response> => {
+  const payload = {
+    personalizations: [
+      {
+        to: [{ email: toEmail }],
+        subject,
+      },
+    ],
+    from: { email: fromEmail, name: fromName },
+    content: [
+      {
+        type: 'text/html',
+        value: body,
+      },
+    ],
+  };
+
+  return fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+};
+
+// Helper function for Mailgun
+const sendMailgunEmail = async (
+  apiKey: string,
+  fromEmail: string,
+  toEmail: string,
+  subject: string,
+  body: string,
+): Promise<Response> => {
+  const formData = new FormData();
+  formData.append('from', fromEmail);
+  formData.append('to', toEmail);
+  formData.append('subject', subject);
+  formData.append('html', body);
+
+  return fetch('https://api.mailgun.net/v3/YOUR_DOMAIN/messages', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
+    },
+    body: formData,
+  });
+};
+
+// Send SMS notification
+export const sendSMSNotification = async (
+  phoneNumber: string,
+  message: string,
+): Promise<ApiResponse<boolean>> => {
+  try {
+    const config = await getSmsConfig();
+
+    if (!config?.enabled || !config.config?.api_key) {
+      console.warn('SMS integration not configured or disabled');
+      return { data: true, error: null }; // Don't fail silently
+    }
+
+    const provider = config.config.provider || 'twilio';
+    let response;
+
+    switch (provider.toLowerCase()) {
+      case 'twilio':
+        response = await sendTwilioSMS(
+          config.config.account_sid,
+          config.config.api_key,
+          config.config.phone_number,
+          phoneNumber,
+          message,
+        );
+        break;
+
+      case 'nexmo':
+        response = await sendNexmoSMS(config.config.api_key, phoneNumber, message);
+        break;
+
+      default:
+        throw new Error(`Unsupported SMS provider: ${provider}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`SMS service returned ${response.status}: ${response.statusText}`);
+    }
+
+    console.log('✅ SMS notification sent successfully');
+    return {
+      data: true,
+      error: null,
+    };
+  } catch (error) {
+    console.error('❌ Error sending SMS notification:', error);
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : 'Failed to send SMS notification',
+    };
+  }
+};
+
+// Helper function for Twilio SMS
+const sendTwilioSMS = async (
+  accountSid: string,
+  authToken: string,
+  fromNumber: string,
+  toNumber: string,
+  message: string,
+): Promise<Response> => {
+  const formData = new FormData();
+  formData.append('From', fromNumber);
+  formData.append('To', toNumber);
+  formData.append('Body', message);
+
+  const credentials = btoa(`${accountSid}:${authToken}`);
+
+  return fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${credentials}`,
+    },
+    body: formData,
+  });
+};
+
+// Helper function for Nexmo (Vonage) SMS
+const sendNexmoSMS = async (
+  apiKey: string,
+  toNumber: string,
+  message: string,
+): Promise<Response> => {
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    to: toNumber,
+    text: message,
+  });
+
+  return fetch(`https://rest.nexmo.com/sms/json?${params}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
 };
 
 // Internal helper to send external notifications based on company config
@@ -315,32 +558,77 @@ const sendExternalNotifications = async (
   body: string,
 ): Promise<void> => {
   try {
-    // Get company config for external integrations
-    const { data: config } = await supabase
-      .from('company_config')
-      .select('slack_webhook, discord_webhook, email_provider')
-      .single();
+    const slackConfig = await getSlackConfig();
+    const discordConfig = await getDiscordConfig();
+    const emailConfig = await getEmailConfig();
 
-    if (!config) return;
-
-    // Send Slack notification if configured
-    if (config.slack_webhook) {
-      await sendSlackNotification(config.slack_webhook, `${title}: ${body}`);
+    // Send Slack notification if configured and event is enabled
+    if (slackConfig?.enabled && slackConfig.config?.webhook_url) {
+      const enabledEvents = slackConfig.config.enabled_events || [];
+      if (enabledEvents.includes(type) || enabledEvents.includes('all')) {
+        await sendSlackNotification(slackConfig.config.channel || '#general', `${title}: ${body}`);
+      }
     }
 
-    // Send Discord notification if configured
-    if (config.discord_webhook) {
-      await sendDiscordNotification(config.discord_webhook, `${title}: ${body}`);
+    // Send Discord notification if configured and event is enabled
+    if (discordConfig?.enabled && discordConfig.config?.webhook_url) {
+      const enabledEvents = discordConfig.config.enabled_events || [];
+      if (enabledEvents.includes(type) || enabledEvents.includes('all')) {
+        await sendDiscordNotification(discordConfig.config.webhook_url, `${title}: ${body}`);
+      }
     }
 
-    // Send email notification if configured
-    if (config.email_provider) {
-      await sendEmailNotification(userId, title, body);
+    // Send email notification if configured and event is enabled
+    if (emailConfig?.enabled && emailConfig.config?.api_key) {
+      const enabledEvents = emailConfig.config.enabled_events || [];
+      if (enabledEvents.includes(type) || enabledEvents.includes('all')) {
+        await sendEmailNotification(userId, title, body);
+      }
     }
   } catch (error) {
     console.error('Error sending external notifications:', error);
     // Don't throw - external notifications shouldn't break the main flow
   }
+};
+
+// Test notification functions
+export const testSlackNotification = async (): Promise<ApiResponse<boolean>> => {
+  const testMessage = '🧪 Test notification from AI OS - Slack integration is working!';
+  return sendSlackNotification('#general', testMessage);
+};
+
+export const testDiscordNotification = async (): Promise<ApiResponse<boolean>> => {
+  const testMessage = '🧪 Test notification from AI OS - Discord integration is working!';
+  return sendDiscordNotification('', testMessage); // Will use config webhook
+};
+
+export const testEmailNotification = async (userId?: string): Promise<ApiResponse<boolean>> => {
+  const testSubject = '🧪 AI OS Email Test';
+  const testBody =
+    '<h2>Test Email</h2><p>This is a test notification from AI OS. Your email integration is working!</p>';
+
+  // If no userId provided, try to get the current user's ID
+  if (!userId) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user?.id) {
+      return { data: false, error: 'No user ID available for email test' };
+    }
+    userId = user.id;
+  }
+
+  return sendEmailNotification(userId, testSubject, testBody);
+};
+
+export const testSMSNotification = async (phoneNumber?: string): Promise<ApiResponse<boolean>> => {
+  const testMessage = 'Test SMS from AI OS - SMS integration is working!';
+
+  if (!phoneNumber) {
+    return { data: false, error: 'Phone number required for SMS test' };
+  }
+
+  return sendSMSNotification(phoneNumber, testMessage);
 };
 
 // Helper functions for notification content

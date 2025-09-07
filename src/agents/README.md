@@ -11,6 +11,8 @@ This module provides a comprehensive system for managing and orchestrating AI ag
 - **Chief Agent Delegation**: Company-scoped agent delegation and task management
 - **Usage Tracking**: Monitor API usage and costs per company
 - **Logging**: Automatic logging of all agent interactions with company context
+- **Security Compliance**: Integration with company security policies and IP restrictions
+- **Audit Trail**: Comprehensive audit logging for compliance and security monitoring
 - **Type Safety**: Full TypeScript support with proper type definitions
 
 ## Setup
@@ -69,6 +71,16 @@ INSERT INTO ai_agents (company_id, name, role, prompt, llm_provider, llm_model, 
 ```
 
 **Note**: Each company can have its own set of agents with custom prompts and configurations.
+
+### 3. Security and Compliance Setup
+
+The agent system integrates with the Compliance & Security Policies Panel:
+
+- **IP Access Control**: Agent operations respect company IP allowlists
+- **API Key Rotation**: Agents use rotating API keys with automatic renewal
+- **Audit Logging**: All agent interactions are logged for compliance
+- **Data Retention**: Agent logs follow company data retention policies
+- **Security Policies**: Agents inherit company security configurations
 
 ## Usage
 
@@ -155,6 +167,30 @@ Updates an existing agent.
 
 Logs an agent interaction to the database.
 
+### Security and Compliance Functions
+
+#### `getAgentSecurityStatus(companyId: string): Promise<SecurityStatus>`
+
+Retrieves the security compliance status for a company's agents.
+
+**Parameters:**
+
+- `companyId`: The company UUID to check security status for
+
+**Returns:** Security status including API key rotation status, IP access compliance, and audit log completeness
+
+#### `validateAgentAccess(companyId: string, userId: string, requestIp: string): Promise<AccessValidation>`
+
+Validates if a user can access agent functionality based on company security policies.
+
+**Parameters:**
+
+- `companyId`: The company UUID
+- `userId`: The user UUID requesting access
+- `requestIp`: The IP address of the request
+
+**Returns:** Access validation result with allowed status and reason
+
 ### Types
 
 ```typescript
@@ -179,6 +215,24 @@ interface Agent {
 
 type LLMProvider = 'openai' | 'claude' | 'gemini';
 type AgentStatus = 'active' | 'inactive';
+
+// Security and Compliance Types
+interface SecurityStatus {
+  apiKeyRotationStatus: 'compliant' | 'warning' | 'expired';
+  ipAccessCompliance: boolean;
+  auditLogCompleteness: number; // percentage
+  lastSecurityCheck: string;
+}
+
+interface AccessValidation {
+  allowed: boolean;
+  reason?: string;
+  securityPolicy?: {
+    enforce_2fa: boolean;
+    ip_allowed: boolean;
+    data_retention_days: number;
+  };
+}
 ```
 
 ## LLM Provider Support
@@ -246,6 +300,14 @@ All errors are logged to the `agent_logs` table for debugging.
 - Usage limits prevent budget overruns
 - Analytics available per company
 
+### Security and Compliance
+
+- **IP Access Control**: Agent access respects company IP allowlists
+- **API Key Security**: Agents use encrypted, rotating API keys
+- **Audit Compliance**: All agent activities are audit-logged for compliance
+- **Data Retention**: Agent logs follow company retention policies
+- **Security Monitoring**: Real-time monitoring of agent security status
+
 ## Security Notes
 
 - **Company Isolation**: All agent operations respect company boundaries
@@ -254,6 +316,9 @@ All errors are logged to the `agent_logs` table for debugging.
 - **Audit Logging**: All agent interactions logged with company context
 - **Usage Limits**: Company-specific budget limits prevent abuse
 - **Access Control**: Users can only access their company's agents
+- **Compliance Integration**: Agents integrate with Compliance & Security Policies Panel
+- **GDPR Compliance**: Agent data handling follows company retention policies
+- **Security Policies**: Agents respect company security configurations
 
 **Note**: The `dangerouslyAllowBrowser` flag is set for OpenAI (consider server-side implementation for production with enhanced security)
 

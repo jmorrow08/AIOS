@@ -18,6 +18,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+
+// V2 Components
+import { TimelineEditor } from '@/components/TimelineEditor';
+import PromptRewriter from '@/components/PromptRewriter';
+import MultiToolSelector from '@/components/MultiToolSelector';
+import ExportPanel from '@/components/ExportPanel';
+
+// API and utilities
 import { createMediaAsset, getMediaAssets, MediaAsset } from '@/api/mediaAssets';
 import {
   createMediaProject,
@@ -32,6 +47,10 @@ import {
   VideoExportOptions,
   RenderProgress,
   TextOverlay,
+  TimelineState,
+  Clip,
+  TrackType,
+  MediaStudioV2State,
 } from '@/lib/types';
 import {
   rewritePrompt,
@@ -44,30 +63,31 @@ import {
   saveProjectSettings,
   loadProjectSettings,
 } from '@/utils/mediaServices';
+import {
+  createDefaultTimeline,
+  addTrack,
+  addClipToTrack,
+  removeClip,
+  updateClip,
+  moveClip,
+  autoSyncAudio,
+  calculateTotalDuration as calculateTimelineDuration,
+} from '@/utils/timelineUtils';
+import { seedSampleProject } from '@/utils/sampleProjectSeeder';
 
-// Project type definitions
-type ProjectType = 'image' | 'video' | 'audio';
-type VideoStep = 'setup' | 'timeline' | 'preview' | 'export';
-
-interface ProjectState {
-  id?: string;
-  type: ProjectType;
-  title: string;
-  brief: string;
-  script: string;
-  scenes: Scene[];
-  settings: MediaProjectSettings;
-  exportOptions: VideoExportOptions;
-  renderProgress?: RenderProgress;
-  currentVideoStep: VideoStep;
-  isGenerating: boolean;
-  isRendering: boolean;
-  message?: { type: 'success' | 'error' | 'info'; text: string };
-}
-
+// V2 State management
 const MediaStudio: React.FC = () => {
+  const [studioState, setStudioState] = useState<MediaStudioV2State>({
+    currentTab: 'projects',
+    timelineState: createDefaultTimeline(getDefaultProjectSettings()),
+    selectedProject: undefined,
+    isGeneratingClip: false,
+    isExporting: false,
+  });
+
+  // Legacy state for backward compatibility (will be phased out)
   const [activeTab, setActiveTab] = useState<'create' | 'library'>('create');
-  const [project, setProject] = useState<ProjectState>({
+  const [project, setProject] = useState<any>({
     type: 'image',
     title: '',
     brief: '',
@@ -80,6 +100,13 @@ const MediaStudio: React.FC = () => {
       quality: 'high',
       includeSubtitles: false,
       publishToLibrary: false,
+      publishToSocial: false,
+      socialPlatforms: [],
+      metadata: {
+        title: '',
+        description: '',
+        tags: [],
+      },
     },
     currentVideoStep: 'setup',
     isGenerating: false,
@@ -130,8 +157,131 @@ const MediaStudio: React.FC = () => {
     }
   };
 
-  const updateProject = (updates: Partial<ProjectState>) => {
+  const updateProject = (updates: Partial<any>) => {
     setProject((prev) => ({ ...prev, ...updates }));
+  };
+
+  // V2 State management methods
+  const updateStudioState = (updates: Partial<MediaStudioV2State>) => {
+    setStudioState((prev) => ({ ...prev, ...updates }));
+  };
+
+  const updateTimelineState = (newTimelineState: TimelineState) => {
+    updateStudioState({ timelineState: newTimelineState });
+  };
+
+  // Timeline management methods
+  const handleClipSelect = useCallback(
+    (clipIds: string[]) => {
+      updateTimelineState({
+        ...studioState.timelineState,
+        selectedClipIds: clipIds,
+      });
+    },
+    [studioState.timelineState],
+  );
+
+  const handleClipEdit = useCallback((clip: Clip) => {
+    // Open clip editing dialog (to be implemented)
+    console.log('Edit clip:', clip);
+  }, []);
+
+  const handlePlayPause = useCallback(() => {
+    updateTimelineState({
+      ...studioState.timelineState,
+      isPlaying: !studioState.timelineState.isPlaying,
+    });
+  }, [studioState.timelineState]);
+
+  // Generate content for timeline
+  const generateClipContent = async (clip: Clip, prompt: string) => {
+    updateStudioState({ isGeneratingClip: true });
+
+    try {
+      let result;
+
+      switch (clip.type) {
+        case 'video':
+          result = await generateImage(prompt, project.settings.imageService, {
+            agentId: 'media-studio-v2',
+          });
+          if (result.success && result.imageUrl) {
+            updateClip(studioState.timelineState, clip.id, {
+              content: { ...clip.content, mediaUrl: result.imageUrl, prompt },
+              metadata: {
+                ...clip.metadata,
+                aiGenerated: true,
+                serviceUsed: project.settings.imageService,
+                modifiedAt: new Date().toISOString(),
+              },
+            });
+          }
+          break;
+
+        case 'audio':
+          result = await generateAudio(prompt, project.settings.audioService, {
+            agentId: 'media-studio-v2',
+          });
+          if (result.success && result.audioUrl) {
+            updateClip(studioState.timelineState, clip.id, {
+              content: { ...clip.content, mediaUrl: result.audioUrl, prompt },
+              metadata: {
+                ...clip.metadata,
+                aiGenerated: true,
+                serviceUsed: project.settings.audioService,
+                modifiedAt: new Date().toISOString(),
+              },
+            });
+          }
+          break;
+
+        case 'text':
+          // For text clips, just update the content
+          updateClip(studioState.timelineState, clip.id, {
+            content: { ...clip.content, text: prompt },
+            metadata: {
+              ...clip.metadata,
+              modifiedAt: new Date().toISOString(),
+            },
+          });
+          break;
+      }
+    } catch (error) {
+      console.error('Content generation error:', error);
+      updateProject({
+        message: { type: 'error', text: 'Failed to generate content' },
+      });
+    } finally {
+      updateStudioState({ isGeneratingClip: false });
+    }
+  };
+
+  // Add new clip to timeline
+  const addNewClip = (trackType: TrackType, title: string = 'New Clip') => {
+    const videoTracks = studioState.timelineState.tracks.filter((t) => t.type === 'video');
+    const targetTrack =
+      videoTracks.length > 0 ? videoTracks[0] : studioState.timelineState.tracks[0];
+
+    if (!targetTrack) return;
+
+    const newClip: Clip = {
+      id: `clip-${Date.now()}`,
+      trackId: targetTrack.id,
+      type: trackType,
+      title,
+      startTime: studioState.timelineState.currentTime,
+      duration: 5,
+      endTime: studioState.timelineState.currentTime + 5,
+      content: {},
+      effects: {},
+      metadata: {
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
+        aiGenerated: false,
+      },
+    };
+
+    updateTimelineState(addClipToTrack(studioState.timelineState, targetTrack.id, newClip));
   };
 
   const setProjectType = (type: ProjectType) => {
@@ -1525,37 +1675,197 @@ const MediaStudio: React.FC = () => {
         )}
 
         <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as 'create' | 'library')}
+          value={studioState.currentTab}
+          onValueChange={(value) =>
+            updateStudioState({ currentTab: value as 'projects' | 'timeline' | 'exports' })
+          }
           className="w-full"
         >
-          <TabsList className="grid w-full grid-cols-2 bg-cosmic-light bg-opacity-20">
-            <TabsTrigger value="create" className="data-[state=active]:bg-cosmic-accent">
-              Create New Project
+          <TabsList className="grid w-full grid-cols-3 bg-cosmic-light bg-opacity-20">
+            <TabsTrigger value="projects" className="data-[state=active]:bg-cosmic-accent">
+              📁 Projects
             </TabsTrigger>
-            <TabsTrigger value="library" className="data-[state=active]:bg-cosmic-accent">
-              Media Library
+            <TabsTrigger value="timeline" className="data-[state=active]:bg-cosmic-accent">
+              🎬 Timeline
+            </TabsTrigger>
+            <TabsTrigger value="exports" className="data-[state=active]:bg-cosmic-accent">
+              📤 Exports
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="create" className="space-y-6">
-            {renderProjectSetup()}
-            {project.type === 'video' && renderVideoWizard()}
-            {project.type === 'image' && renderImageProject()}
-            {project.type === 'audio' && (
-              <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
-                <h3 className="text-xl font-bold text-cosmic-highlight mb-4">
-                  Audio Generation (Coming Soon)
-                </h3>
-                <p className="text-cosmic-light">
-                  Standalone audio generation will be implemented in the next update.
-                </p>
-              </div>
-            )}
+          {/* Projects Tab */}
+          <TabsContent value="projects" className="space-y-6">
+            <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+              <CardHeader>
+                <CardTitle className="text-cosmic-highlight">Project Management</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Project Creation */}
+                <div className="space-y-4">
+                  <div className="flex gap-4 flex-wrap">
+                    <Button
+                      onClick={() => addNewClip('video', 'New Video Clip')}
+                      className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
+                    >
+                      🎬 New Video Clip
+                    </Button>
+                    <Button
+                      onClick={() => addNewClip('audio', 'New Audio Clip')}
+                      variant="outline"
+                      className="border-cosmic-light text-cosmic-light"
+                    >
+                      🎵 New Audio Clip
+                    </Button>
+                    <Button
+                      onClick={() => addNewClip('text', 'New Text Clip')}
+                      variant="outline"
+                      className="border-cosmic-light text-cosmic-light"
+                    >
+                      📝 New Text Clip
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        const sampleProject = seedSampleProject();
+                        updateStudioState({
+                          timelineState: sampleProject.timeline,
+                          currentTab: 'timeline',
+                        });
+                        updateProject({
+                          title: sampleProject.metadata.title,
+                          brief: sampleProject.metadata.description,
+                          message: {
+                            type: 'success',
+                            text: 'Sample project loaded! Switch to Timeline tab to explore.',
+                          },
+                        });
+                      }}
+                      variant="outline"
+                      className="border-green-500 text-green-500 hover:bg-green-500 hover:bg-opacity-20"
+                    >
+                      🚀 Load Sample Project
+                    </Button>
+                  </div>
+
+                  {/* AI Service Configuration */}
+                  <MultiToolSelector
+                    settings={project.settings}
+                    onSettingsUpdate={(settings) => updateProject({ settings })}
+                  />
+
+                  {/* Legacy Project Setup (for backward compatibility) */}
+                  <div className="border-t border-cosmic-light border-opacity-20 pt-6">
+                    <h3 className="text-lg font-semibold text-cosmic-highlight mb-4">
+                      Legacy Project Setup
+                    </h3>
+                    {renderProjectSetup()}
+                    {project.type === 'video' && renderVideoWizard()}
+                    {project.type === 'image' && renderImageProject()}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Media Library */}
+            {renderMediaLibrary()}
           </TabsContent>
 
-          <TabsContent value="library" className="space-y-6">
-            {renderMediaLibrary()}
+          {/* Timeline Tab */}
+          <TabsContent value="timeline" className="space-y-6">
+            <div className="space-y-6">
+              {/* Timeline Controls */}
+              <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+                <CardHeader>
+                  <CardTitle className="text-cosmic-highlight flex justify-between items-center">
+                    Timeline Editor V2
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          updateTimelineState(addTrack(studioState.timelineState, 'video'))
+                        }
+                        className="border-cosmic-light text-cosmic-light"
+                      >
+                        + Video Track
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          updateTimelineState(addTrack(studioState.timelineState, 'audio'))
+                        }
+                        className="border-cosmic-light text-cosmic-light"
+                      >
+                        + Audio Track
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          updateTimelineState(autoSyncAudio(studioState.timelineState))
+                        }
+                        className="border-cosmic-light text-cosmic-light"
+                      >
+                        🔄 Auto-Sync Audio
+                      </Button>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+
+              {/* Timeline Editor */}
+              <TimelineEditor
+                timelineState={studioState.timelineState}
+                onTimelineChange={updateTimelineState}
+                onClipSelect={handleClipSelect}
+                onClipEdit={handleClipEdit}
+                isPlaying={studioState.timelineState.isPlaying}
+                onPlayPause={handlePlayPause}
+              />
+
+              {/* Clip Content Generation */}
+              {studioState.timelineState.selectedClipIds.length > 0 && (
+                <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+                  <CardHeader>
+                    <CardTitle className="text-cosmic-highlight">
+                      Generate Content for Selected Clip
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <PromptRewriter
+                      initialPrompt=""
+                      context={
+                        studioState.timelineState.tracks
+                          .flatMap((t) => t.clips)
+                          .find((c) => c.id === studioState.timelineState.selectedClipIds[0])
+                          ?.type || 'image'
+                      }
+                      onPromptUpdate={(prompt) => {
+                        const selectedClip = studioState.timelineState.tracks
+                          .flatMap((t) => t.clips)
+                          .find((c) => c.id === studioState.timelineState.selectedClipIds[0]);
+                        if (selectedClip) {
+                          generateClipContent(selectedClip, prompt);
+                        }
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Exports Tab */}
+          <TabsContent value="exports" className="space-y-6">
+            <ExportPanel
+              timelineState={studioState.timelineState}
+              exportOptions={project.exportOptions}
+              onExportOptionsUpdate={(options) => updateProject({ exportOptions: options })}
+              onExportComplete={(exportUrl) => {
+                console.log('Export completed:', exportUrl);
+                // Handle export completion
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>

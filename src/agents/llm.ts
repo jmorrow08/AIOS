@@ -7,6 +7,8 @@ import {
   checkBudgetBeforeAction,
   logApiUsageAndUpdateBudget,
 } from '@/api/apiUsage';
+import { getServiceApiKey } from '@/api/security';
+import { supabase } from '@/lib/supabaseClient';
 
 export interface LLMConfig {
   provider: LLMProvider;
@@ -32,9 +34,74 @@ export interface LLMCallOptions {
 }
 
 /**
- * Get API key from environment variables based on provider
+ * Get API key from database or environment variables based on provider
  */
-export const getApiKey = (provider: LLMProvider, apiKeyRef?: string): string | null => {
+export const getApiKey = async (
+  provider: LLMProvider,
+  apiKeyRef?: string,
+): Promise<string | null> => {
+  try {
+    // First try to get from database
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      console.error('No authenticated user found');
+      return getFallbackApiKey(provider, apiKeyRef);
+    }
+
+    // Get user's company
+    const { data: userData } = await supabase
+      .from('users')
+      .select('company_id')
+      .eq('id', user.id)
+      .single();
+
+    if (!userData?.company_id) {
+      console.error('User has no company association');
+      return getFallbackApiKey(provider, apiKeyRef);
+    }
+
+    // Map provider to service name in database
+    const serviceName = mapProviderToService(provider);
+
+    // Try to get API key from database
+    const apiKey = await getServiceApiKey(userData.company_id, serviceName);
+    if (apiKey) {
+      return apiKey;
+    }
+
+    // Fallback to environment variables if database lookup fails
+    console.warn(
+      `API key not found in database for service ${serviceName}, falling back to environment variables`,
+    );
+    return getFallbackApiKey(provider, apiKeyRef);
+  } catch (error) {
+    console.error('Error fetching API key from database:', error);
+    return getFallbackApiKey(provider, apiKeyRef);
+  }
+};
+
+/**
+ * Map LLM provider to database service name
+ */
+const mapProviderToService = (provider: LLMProvider): string => {
+  switch (provider) {
+    case 'openai':
+      return 'openai';
+    case 'claude':
+      return 'anthropic';
+    case 'gemini':
+      return 'google-gemini';
+    default:
+      return provider;
+  }
+};
+
+/**
+ * Fallback to environment variables (for backward compatibility)
+ */
+const getFallbackApiKey = (provider: LLMProvider, apiKeyRef?: string): string | null => {
   // If apiKeyRef is provided, use it as the key name in environment variables
   if (apiKeyRef) {
     return import.meta.env[apiKeyRef] || null;
@@ -360,12 +427,22 @@ export const sendGeminiMessage = async (
  * Send message to LLM based on provider configuration with budget checking and usage logging
  */
 export const sendLLMMessage = async (
-  config: LLMConfig,
+  config: LLMConfig | Promise<LLMConfig | null>,
   prompt: string,
   task: string,
   options: LLMCallOptions = {},
 ): Promise<LLMResponse> => {
-  const { provider, apiKey, model } = config;
+  // Handle both sync and async config
+  const resolvedConfig = config instanceof Promise ? await config : config;
+
+  if (!resolvedConfig) {
+    return {
+      content: '',
+      error: 'Failed to create LLM configuration',
+    };
+  }
+
+  const { provider, apiKey, model } = resolvedConfig;
 
   switch (provider) {
     case 'openai':
@@ -385,12 +462,12 @@ export const sendLLMMessage = async (
 /**
  * Create LLM configuration from agent data
  */
-export const createLLMConfig = (
+export const createLLMConfig = async (
   provider: LLMProvider,
   apiKeyRef?: string,
   model?: string,
-): LLMConfig | null => {
-  const apiKey = getApiKey(provider, apiKeyRef);
+): Promise<LLMConfig | null> => {
+  const apiKey = await getApiKey(provider, apiKeyRef);
 
   if (!apiKey) {
     console.error(`API key not found for provider: ${provider}`);

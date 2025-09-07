@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { CosmicBackground } from './CosmicBackground';
+import { applyIPRestrictions } from '@/api/compliance';
 
 interface AuthProps {
   onAuthSuccess: () => void;
@@ -18,6 +19,20 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const getClientIP = async (): Promise<string> => {
+    try {
+      // In a real application, you'd get this from your backend
+      // For demo purposes, we'll use a service to get the public IP
+      const response = await fetch('https://api.ipify.org?format=json');
+      const data = await response.json();
+      return data.ip;
+    } catch (error) {
+      console.error('Error getting client IP:', error);
+      // Fallback to localhost for development
+      return '127.0.0.1';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -25,12 +40,42 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        // Get client IP for security check
+        const clientIP = await getClientIP();
+
+        // First, attempt to get user data to check IP restrictions
+        // Note: In a production app, this IP check should be done server-side
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
 
-        if (error) throw error;
+        if (authError) throw authError;
+
+        // If login successful, check IP restrictions
+        if (authData.user) {
+          // Get user's company to check IP restrictions
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('company_id')
+            .eq('id', authData.user.id)
+            .single();
+
+          if (!userError && userData?.company_id) {
+            const { allowed, error: ipError } = await applyIPRestrictions(
+              authData.user.id,
+              clientIP,
+            );
+
+            if (!allowed) {
+              // Sign out the user if IP not allowed
+              await supabase.auth.signOut();
+              throw new Error(
+                ipError || 'Access denied from this IP address. Please contact your administrator.',
+              );
+            }
+          }
+        }
 
         setMessage({ type: 'success', text: 'Login successful!' });
         setTimeout(onAuthSuccess, 1000);

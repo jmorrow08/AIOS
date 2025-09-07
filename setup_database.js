@@ -27,6 +27,8 @@ async function setupDatabase() {
       'jobs_updated_table.sql',
       'invoices_table.sql',
       'documents_table.sql',
+      'automation_flows_table.sql',
+      'automation_nodes_table.sql',
     ];
 
     for (const file of sqlFiles) {

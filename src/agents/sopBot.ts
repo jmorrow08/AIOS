@@ -420,3 +420,148 @@ export const createSOPVersion = async (
     };
   }
 };
+
+/**
+ * Generate SOP content specifically for whiteboard placement
+ */
+export interface WhiteboardSOPRequest {
+  topic: string;
+  audience: 'employee' | 'client' | 'agent';
+  maxLength?: number; // Maximum characters for whiteboard display
+  format: 'outline' | 'steps' | 'bullet_points';
+  userId?: string;
+}
+
+export interface WhiteboardSOPResponse {
+  success: boolean;
+  content?: string;
+  title?: string;
+  error?: string;
+}
+
+/**
+ * Generate SOP content optimized for whiteboard display
+ */
+export const generateWhiteboardSOP = async (
+  request: WhiteboardSOPRequest,
+): Promise<WhiteboardSOPResponse> => {
+  try {
+    // Get SOP Bot agent configuration
+    const agentResponse = await getAgentByRole('documentation_specialist');
+    if (agentResponse.error || !agentResponse.data) {
+      return {
+        success: false,
+        error: `SOP Bot not found: ${agentResponse.error}`,
+      };
+    }
+
+    const agent = agentResponse.data;
+
+    // Perform RAG search for relevant context
+    const contextSearch = await performRAGSearch(
+      `SOP for ${request.topic} ${request.audience}`,
+      'documentation_specialist',
+    );
+
+    // Build whiteboard-optimized SOP generation prompt
+    const prompt = buildWhiteboardSOPPrompt(request, contextSearch.results);
+
+    // Generate content using LLM
+    const llmConfig = createLLMConfig(agent.llm_provider, agent.api_key_ref, agent.llm_model);
+    if (!llmConfig) {
+      return {
+        success: false,
+        error: 'LLM configuration not available for SOP generation',
+      };
+    }
+
+    const llmResponse = await sendLLMMessage(llmConfig, agent.prompt || '', prompt);
+
+    if (llmResponse.error || !llmResponse.content) {
+      return {
+        success: false,
+        error: `Failed to generate SOP: ${llmResponse.error}`,
+      };
+    }
+
+    // Truncate if needed
+    let content = llmResponse.content;
+    if (request.maxLength && content.length > request.maxLength) {
+      content = content.substring(0, request.maxLength - 3) + '...';
+    }
+
+    return {
+      success: true,
+      content: content,
+      title: `${request.topic} SOP (${request.audience})`,
+    };
+  } catch (error) {
+    console.error('Error generating whiteboard SOP:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error generating SOP',
+    };
+  }
+};
+
+/**
+ * Build the whiteboard-optimized SOP generation prompt
+ */
+const buildWhiteboardSOPPrompt = (request: WhiteboardSOPRequest, contextResults: any[]): string => {
+  const contextText =
+    contextResults.length > 0
+      ? `\n\nRelevant context:\n${contextResults
+          .slice(0, 2)
+          .map((result) => `- ${result.title}: ${result.content.substring(0, 100)}...`)
+          .join('\n')}`
+      : '';
+
+  const formatInstructions = {
+    outline: `
+- Create a hierarchical outline with main sections and subsections
+- Use clear, descriptive headings
+- Keep each line concise for readability
+- Focus on key processes and decision points`,
+    steps: `
+- Number each step clearly (1., 2., 3., etc.)
+- Keep steps actionable and specific
+- Include brief explanations for complex steps
+- Add checkpoints or verification points`,
+    bullet_points: `
+- Use bullet points for key information
+- Keep each bullet focused on one concept
+- Use sub-bullets for details when needed
+- Group related items together`,
+  };
+
+  return `Generate a Standard Operating Procedure (SOP) optimized for whiteboard display:
+
+**Requirements:**
+- Topic: ${request.topic}
+- Target Audience: ${request.audience}
+- Format: ${request.format}
+${request.maxLength ? `- Maximum Length: ${request.maxLength} characters` : ''}
+
+**Formatting Guidelines:**
+${formatInstructions[request.format]}
+
+**Content Guidelines:**
+- Use clear, concise language
+- Focus on essential information only
+- Make it visually scannable
+- Use consistent formatting
+- Include only the most critical steps/details
+
+**Structure:**
+${
+  request.format === 'outline'
+    ? '- Main headings with sub-points'
+    : request.format === 'steps'
+    ? '- Numbered sequence of actions'
+    : '- Key points and important details'
+}
+
+${contextText}
+
+Generate the SOP content in plain text format, optimized for whiteboard readability. Keep it focused and actionable.`;
+};

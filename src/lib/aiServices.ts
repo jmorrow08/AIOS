@@ -9,7 +9,7 @@ export const generateDocumentDraft = async (
   request: AIDraftRequest,
   provider: LLMProvider = 'openai',
 ): Promise<string> => {
-  const config = createLLMConfig(provider);
+  const config = await createLLMConfig(provider);
   if (!config) {
     throw new Error('AI service not configured. Please check your API keys.');
   }
@@ -90,7 +90,7 @@ export const generateDocumentSummary = async (
   document: Document,
   provider: LLMProvider = 'openai',
 ): Promise<string> => {
-  const config = createLLMConfig(provider);
+  const config = await createLLMConfig(provider);
   if (!config) {
     throw new Error('AI service not configured. Please check your API keys.');
   }
@@ -138,7 +138,7 @@ export const answerQuestionWithKnowledge = async (
   documents: Document[],
   provider: LLMProvider = 'openai',
 ): Promise<QnAResponse> => {
-  const config = createLLMConfig(provider);
+  const config = await createLLMConfig(provider);
   if (!config) {
     throw new Error('AI service not configured. Please check your API keys.');
   }

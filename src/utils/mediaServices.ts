@@ -562,6 +562,19 @@ export const getDefaultProjectSettings = (): MediaProjectSettings => ({
   promptRewriterEnabled: true,
   outputFormat: 'mp4',
   resolution: '1080p',
+  // V2 Default Settings
+  timelineZoom: 50, // pixels per second
+  snapToGrid: true,
+  gridSize: 0.5, // 0.5 seconds
+  autoSyncAudio: true,
+  defaultTrackHeight: 60,
+  exportQuality: 'high',
+  includeSubtitles: false,
+  socialPublishing: {
+    youtube: false,
+    twitter: false,
+    linkedin: false,
+  },
 });
 
 /**

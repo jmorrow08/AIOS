@@ -309,3 +309,261 @@ export const updateTaskerConfig = async (config: {
     };
   }
 };
+
+/**
+ * Get Slack integration configuration
+ */
+export const getSlackConfig = async (): Promise<{ enabled: boolean; config: any } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('company_config')
+      .select('is_enabled, value')
+      .eq('key', 'slack_integration')
+      .single();
+
+    if (error || !data) {
+      console.warn('Slack config not found:', error);
+      return null;
+    }
+
+    return {
+      enabled: data.is_enabled,
+      config: data.value,
+    };
+  } catch (error) {
+    console.error('Error fetching Slack config:', error);
+    return null;
+  }
+};
+
+/**
+ * Get Discord integration configuration
+ */
+export const getDiscordConfig = async (): Promise<{ enabled: boolean; config: any } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('company_config')
+      .select('is_enabled, value')
+      .eq('key', 'discord_integration')
+      .single();
+
+    if (error || !data) {
+      console.warn('Discord config not found:', error);
+      return null;
+    }
+
+    return {
+      enabled: data.is_enabled,
+      config: data.value,
+    };
+  } catch (error) {
+    console.error('Error fetching Discord config:', error);
+    return null;
+  }
+};
+
+/**
+ * Get Email integration configuration
+ */
+export const getEmailConfig = async (): Promise<{ enabled: boolean; config: any } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('company_config')
+      .select('is_enabled, value')
+      .eq('key', 'email_integration')
+      .single();
+
+    if (error || !data) {
+      console.warn('Email config not found:', error);
+      return null;
+    }
+
+    return {
+      enabled: data.is_enabled,
+      config: data.value,
+    };
+  } catch (error) {
+    console.error('Error fetching Email config:', error);
+    return null;
+  }
+};
+
+/**
+ * Get SMS integration configuration
+ */
+export const getSmsConfig = async (): Promise<{ enabled: boolean; config: any } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('company_config')
+      .select('is_enabled, value')
+      .eq('key', 'sms_integration')
+      .single();
+
+    if (error || !data) {
+      console.warn('SMS config not found:', error);
+      return null;
+    }
+
+    return {
+      enabled: data.is_enabled,
+      config: data.value,
+    };
+  } catch (error) {
+    console.error('Error fetching SMS config:', error);
+    return null;
+  }
+};
+
+/**
+ * Enable/Disable Slack integration
+ */
+export const toggleSlackIntegration = async (enabled: boolean): Promise<CompanyConfigResponse> => {
+  return updateCompanyConfig('slack_integration', { is_enabled: enabled });
+};
+
+/**
+ * Enable/Disable Discord integration
+ */
+export const toggleDiscordIntegration = async (
+  enabled: boolean,
+): Promise<CompanyConfigResponse> => {
+  return updateCompanyConfig('discord_integration', { is_enabled: enabled });
+};
+
+/**
+ * Enable/Disable Email integration
+ */
+export const toggleEmailIntegration = async (enabled: boolean): Promise<CompanyConfigResponse> => {
+  return updateCompanyConfig('email_integration', { is_enabled: enabled });
+};
+
+/**
+ * Enable/Disable SMS integration
+ */
+export const toggleSmsIntegration = async (enabled: boolean): Promise<CompanyConfigResponse> => {
+  return updateCompanyConfig('sms_integration', { is_enabled: enabled });
+};
+
+/**
+ * Update Slack configuration
+ */
+export const updateSlackConfig = async (config: {
+  webhook_url?: string;
+  channel?: string;
+  enabled_events?: string[];
+  mention_users?: string[];
+}): Promise<CompanyConfigResponse> => {
+  try {
+    // First get current config
+    const currentConfig = await getSlackConfig();
+    const currentValue = currentConfig?.config || {};
+
+    // Merge with new config
+    const updatedValue = {
+      ...currentValue,
+      ...config,
+    };
+
+    return updateCompanyConfig('slack_integration', { value: updatedValue });
+  } catch (error) {
+    console.error('Error updating Slack config:', error);
+    return {
+      data: null,
+      error: 'Failed to update Slack configuration',
+    };
+  }
+};
+
+/**
+ * Update Discord configuration
+ */
+export const updateDiscordConfig = async (config: {
+  webhook_url?: string;
+  username?: string;
+  avatar_url?: string;
+  enabled_events?: string[];
+}): Promise<CompanyConfigResponse> => {
+  try {
+    // First get current config
+    const currentConfig = await getDiscordConfig();
+    const currentValue = currentConfig?.config || {};
+
+    // Merge with new config
+    const updatedValue = {
+      ...currentValue,
+      ...config,
+    };
+
+    return updateCompanyConfig('discord_integration', { value: updatedValue });
+  } catch (error) {
+    console.error('Error updating Discord config:', error);
+    return {
+      data: null,
+      error: 'Failed to update Discord configuration',
+    };
+  }
+};
+
+/**
+ * Update Email configuration
+ */
+export const updateEmailConfig = async (config: {
+  provider?: string;
+  api_key?: string;
+  from_email?: string;
+  from_name?: string;
+  enabled_events?: string[];
+  template_ids?: Record<string, string>;
+}): Promise<CompanyConfigResponse> => {
+  try {
+    // First get current config
+    const currentConfig = await getEmailConfig();
+    const currentValue = currentConfig?.config || {};
+
+    // Merge with new config
+    const updatedValue = {
+      ...currentValue,
+      ...config,
+    };
+
+    return updateCompanyConfig('email_integration', { value: updatedValue });
+  } catch (error) {
+    console.error('Error updating Email config:', error);
+    return {
+      data: null,
+      error: 'Failed to update Email configuration',
+    };
+  }
+};
+
+/**
+ * Update SMS configuration
+ */
+export const updateSmsConfig = async (config: {
+  provider?: string;
+  api_key?: string;
+  account_sid?: string;
+  phone_number?: string;
+  enabled_events?: string[];
+  country_codes?: string[];
+}): Promise<CompanyConfigResponse> => {
+  try {
+    // First get current config
+    const currentConfig = await getSmsConfig();
+    const currentValue = currentConfig?.config || {};
+
+    // Merge with new config
+    const updatedValue = {
+      ...currentValue,
+      ...config,
+    };
+
+    return updateCompanyConfig('sms_integration', { value: updatedValue });
+  } catch (error) {
+    console.error('Error updating SMS config:', error);
+    return {
+      data: null,
+      error: 'Failed to update SMS configuration',
+    };
+  }
+};

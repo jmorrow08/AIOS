@@ -18,7 +18,11 @@ import MediaStudio from '@/pages/MediaStudio';
 import FinancialNexus from '@/pages/FinancialNexus';
 import OperationsHub from '@/pages/OperationsHub';
 import MarketingHub from '@/pages/MarketingHub';
+import Analytics from '@/pages/Analytics';
+import Collaboration from '@/pages/Collaboration';
+import Whiteboard from '@/pages/Whiteboard';
 import Settings from '@/pages/Settings';
+import AutomationBuilder from '@/pages/AutomationBuilder';
 import { UserProvider } from '@/context/UserContext';
 
 const AppContent: React.FC = () => {
@@ -124,6 +128,24 @@ const AppContent: React.FC = () => {
       />
 
       <Route
+        path="/collaboration"
+        element={
+          <ProtectedRoute>
+            <Collaboration />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/whiteboard"
+        element={
+          <ProtectedRoute>
+            <Whiteboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/settings"
         element={
           <ProtectedRoute>
@@ -164,6 +186,24 @@ const AppContent: React.FC = () => {
         element={
           <ProtectedRoute>
             <MarketingHub />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <Analytics />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/automation"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AutomationBuilder />
           </ProtectedRoute>
         }
       />
