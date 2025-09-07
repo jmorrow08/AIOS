@@ -1,208 +1,237 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { CosmicBackground } from '@/components/CosmicBackground';
 import { RadialMenu } from '@/components/RadialMenu';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { createMediaAsset, getMediaAssets, MediaAsset } from '@/api/mediaAssets';
 
-interface FileWithPreview {
-  file: File;
-  preview: string;
+interface GeneratedMedia {
   id: string;
-}
-
-interface UploadedFile {
-  id: string;
-  name: string;
+  type: 'image' | 'video' | 'audio';
   url: string;
-  size: number;
-  type: string;
-  uploadedAt: Date;
+  prompt: string;
+  service: string;
+  createdAt: Date;
 }
 
 const MediaStudio: React.FC = () => {
-  const [files, setFiles] = useState<FileWithPreview[]>([]);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
-  const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
+  const [activeTab, setActiveTab] = useState('image');
+  const [imagePrompt, setImagePrompt] = useState('');
+  const [videoPrompt, setVideoPrompt] = useState('');
+  const [audioPrompt, setAudioPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedMedia, setGeneratedMedia] = useState<GeneratedMedia[]>([]);
+  const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load uploaded files on component mount
+  // Load media assets on component mount
   useEffect(() => {
-    loadUploadedFiles();
+    loadMediaAssets();
   }, []);
 
-  const loadUploadedFiles = async () => {
+  const loadMediaAssets = async () => {
+    const { data, error } = await getMediaAssets();
+    if (error) {
+      console.error('Error loading media assets:', error);
+    } else if (data) {
+      setMediaAssets(data as MediaAsset[]);
+    }
+  };
+
+  const generateImage = async () => {
+    if (!imagePrompt.trim()) {
+      setMessage({ type: 'error', text: 'Please enter a prompt for image generation' });
+      return;
+    }
+
+    setIsGenerating(true);
     try {
-      const { data, error } = await supabase.storage.from('media').list();
+      // MidJourney/Ideogram stub - in real implementation, this would call the actual API
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate API delay
 
-      if (error) {
-        console.error('Error loading files:', error);
-        return;
-      }
+      const mockImageUrl = `https://picsum.photos/512/512?random=${Date.now()}`;
 
-      const filesWithUrls = await Promise.all(
-        (data || []).map(async (file) => {
-          const { data: urlData } = supabase.storage.from('media').getPublicUrl(file.name);
+      const newMedia: GeneratedMedia = {
+        id: `img-${Date.now()}`,
+        type: 'image',
+        url: mockImageUrl,
+        prompt: imagePrompt,
+        service: 'MidJourney/Ideogram',
+        createdAt: new Date(),
+      };
 
-          return {
-            id: file.name,
-            name: file.name,
-            url: urlData.publicUrl,
-            size: file.metadata?.size || 0,
-            type: file.metadata?.mimetype || 'unknown',
-            uploadedAt: new Date(file.created_at),
-          };
-        }),
-      );
-
-      setUploadedFiles(filesWithUrls);
+      setGeneratedMedia((prev) => [newMedia, ...prev]);
+      setImagePrompt('');
+      setMessage({ type: 'success', text: 'Image generated successfully!' });
     } catch (error) {
-      console.error('Error loading uploaded files:', error);
+      console.error('Error generating image:', error);
+      setMessage({ type: 'error', text: 'Failed to generate image' });
+    } finally {
+      setIsGenerating(false);
     }
   };
 
-  const generatePreview = (file: File): string => {
-    if (file.type.startsWith('image/')) {
-      return URL.createObjectURL(file);
-    } else if (file.type.startsWith('video/')) {
-      return URL.createObjectURL(file);
+  const generateVideo = async () => {
+    if (!videoPrompt.trim()) {
+      setMessage({ type: 'error', text: 'Please enter a prompt for video generation' });
+      return;
     }
-    return '/placeholder-file.png'; // You can add a placeholder icon
-  };
 
-  const handleFiles = useCallback((selectedFiles: FileList | null) => {
-    if (!selectedFiles) return;
-
-    const newFiles: FileWithPreview[] = [];
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-        newFiles.push({
-          file,
-          preview: generatePreview(file),
-          id: `${Date.now()}-${Math.random()}`,
-        });
-      }
-    }
-    setFiles((prev) => [...prev, ...newFiles]);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      handleFiles(e.dataTransfer.files);
-    },
-    [handleFiles],
-  );
-
-  const handleFileInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      handleFiles(e.target.files);
-    },
-    [handleFiles],
-  );
-
-  const uploadFile = async (fileWithPreview: FileWithPreview) => {
-    const fileId = fileWithPreview.id;
-    setUploadingFiles((prev) => new Set([...prev, fileId]));
-
+    setIsGenerating(true);
     try {
-      const fileExt = fileWithPreview.file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      // HeyGen/Sora stub - in real implementation, this would call the actual API
+      await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate API delay
 
-      const { data, error } = await supabase.storage
+      const mockVideoUrl = 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4';
+
+      const newMedia: GeneratedMedia = {
+        id: `vid-${Date.now()}`,
+        type: 'video',
+        url: mockVideoUrl,
+        prompt: videoPrompt,
+        service: 'HeyGen/Sora',
+        createdAt: new Date(),
+      };
+
+      setGeneratedMedia((prev) => [newMedia, ...prev]);
+      setVideoPrompt('');
+      setMessage({ type: 'success', text: 'Video generated successfully!' });
+    } catch (error) {
+      console.error('Error generating video:', error);
+      setMessage({ type: 'error', text: 'Failed to generate video' });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const generateAudio = async () => {
+    if (!audioPrompt.trim()) {
+      setMessage({ type: 'error', text: 'Please enter a prompt for audio generation' });
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      // ElevenLabs stub - in real implementation, this would call the actual API
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API delay
+
+      const mockAudioUrl = 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav';
+
+      const newMedia: GeneratedMedia = {
+        id: `aud-${Date.now()}`,
+        type: 'audio',
+        url: mockAudioUrl,
+        prompt: audioPrompt,
+        service: 'ElevenLabs',
+        createdAt: new Date(),
+      };
+
+      setGeneratedMedia((prev) => [newMedia, ...prev]);
+      setAudioPrompt('');
+      setMessage({ type: 'success', text: 'Audio generated successfully!' });
+    } catch (error) {
+      console.error('Error generating audio:', error);
+      setMessage({ type: 'error', text: 'Failed to generate audio' });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const saveToLibrary = async (media: GeneratedMedia) => {
+    try {
+      // First, upload the file to Supabase Storage
+      const response = await fetch(media.url);
+      const blob = await response.blob();
+
+      const fileExt = media.type === 'image' ? 'jpg' : media.type === 'video' ? 'mp4' : 'wav';
+      const fileName = `${media.type}-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('media')
-        .upload(fileName, fileWithPreview.file, {
+        .upload(fileName, blob, {
           cacheControl: '3600',
           upsert: false,
         });
 
-      if (error) {
-        throw error;
+      if (uploadError) {
+        throw uploadError;
       }
 
       // Get public URL
       const { data: urlData } = supabase.storage.from('media').getPublicUrl(fileName);
 
-      // Add to uploaded files list
-      const newUploadedFile: UploadedFile = {
-        id: fileName,
-        name: fileWithPreview.file.name,
-        url: urlData.publicUrl,
-        size: fileWithPreview.file.size,
-        type: fileWithPreview.file.type,
-        uploadedAt: new Date(),
+      // Save to media_assets table
+      const assetData = {
+        title: `${media.type.charAt(0).toUpperCase() + media.type.slice(1)} - ${media.prompt.slice(
+          0,
+          50,
+        )}...`,
+        description: `Generated using ${media.service}`,
+        file_url: urlData.publicUrl,
+        file_name: fileName,
+        file_size: blob.size,
+        file_type: blob.type || `application/${media.type}`,
+        media_type: media.type,
+        prompt: media.prompt,
+        ai_service: media.service,
       };
 
-      setUploadedFiles((prev) => [newUploadedFile, ...prev]);
+      const { data: assetResult, error: assetError } = await createMediaAsset(assetData);
 
-      // Remove from files to upload
-      setFiles((prev) => prev.filter((f) => f.id !== fileId));
-
-      setMessage({ type: 'success', text: `${fileWithPreview.file.name} uploaded successfully!` });
-    } catch (error) {
-      console.error('Upload error:', error);
-      setMessage({ type: 'error', text: `Failed to upload ${fileWithPreview.file.name}` });
-    } finally {
-      setUploadingFiles((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(fileId);
-        return newSet;
-      });
-      setUploadProgress((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(fileId);
-        return newMap;
-      });
-    }
-  };
-
-  const deleteFile = async (fileName: string) => {
-    try {
-      const { error } = await supabase.storage.from('media').remove([fileName]);
-
-      if (error) {
-        throw error;
+      if (assetError) {
+        throw assetError;
       }
 
-      setUploadedFiles((prev) => prev.filter((f) => f.id !== fileName));
-      setMessage({ type: 'success', text: 'File deleted successfully!' });
+      // Remove from generated media and add to assets
+      setGeneratedMedia((prev) => prev.filter((m) => m.id !== media.id));
+      if (assetResult) {
+        setMediaAssets((prev) => [assetResult as MediaAsset, ...prev]);
+      }
+
+      setMessage({ type: 'success', text: 'Media saved to library successfully!' });
     } catch (error) {
-      console.error('Delete error:', error);
-      setMessage({ type: 'error', text: 'Failed to delete file' });
+      console.error('Error saving to library:', error);
+      setMessage({ type: 'error', text: 'Failed to save media to library' });
     }
   };
 
-  const generateAIContent = (fileName: string) => {
-    // Stub function for AI content generation
-    const aiContent =
-      Math.random() > 0.5
-        ? `AI-generated caption: "A stunning ${fileName
-            .split('.')
-            .pop()} that captures the essence of creativity and innovation."`
-        : `AI-generated script: "Welcome to this amazing visual journey featuring ${fileName}. Let's explore the possibilities together!"`;
-
-    setMessage({ type: 'success', text: aiContent });
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const renderMediaPreview = (media: GeneratedMedia) => {
+    switch (media.type) {
+      case 'image':
+        return (
+          <img
+            src={media.url}
+            alt={media.prompt}
+            className="w-full h-full object-cover rounded-lg"
+          />
+        );
+      case 'video':
+        return <video src={media.url} controls className="w-full h-full object-cover rounded-lg" />;
+      case 'audio':
+        return (
+          <div className="flex items-center justify-center h-full bg-cosmic-light bg-opacity-20 rounded-lg">
+            <div className="text-center">
+              <svg
+                className="mx-auto h-16 w-16 text-cosmic-accent mb-4"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M12 2C10.896 2 10 2.896 10 4V12C8.896 12 8 12.896 8 14C8 15.104 8.896 16 10 16V20C10 21.104 10.896 22 12 22C13.104 22 14 21.104 14 20V16C15.104 16 16 15.104 16 14C16 12.896 15.104 12 14 12V4C14 2.896 13.104 2 12 2Z" />
+              </svg>
+              <audio controls className="w-full">
+                <source src={media.url} type="audio/wav" />
+              </audio>
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
@@ -214,7 +243,7 @@ const MediaStudio: React.FC = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-cosmic-highlight mb-2">Media Studio</h1>
           <p className="text-xl text-cosmic-accent">
-            Upload and create multimedia content with AI enhancements
+            Generate and create multimedia content with AI
           </p>
         </div>
 
@@ -234,97 +263,115 @@ const MediaStudio: React.FC = () => {
           </div>
         )}
 
-        {/* Upload Zone */}
-        <div className="mb-8">
-          <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              isDragOver
-                ? 'border-cosmic-accent bg-cosmic-accent bg-opacity-10'
-                : 'border-cosmic-light hover:border-cosmic-accent'
-            }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <div className="mb-4">
-              <svg
-                className="mx-auto h-12 w-12 text-cosmic-accent"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                />
-              </svg>
-            </div>
-            <p className="text-xl mb-2">Drop files here or click to browse</p>
-            <p className="text-cosmic-light mb-4">Supports images and videos</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,video/*"
-              onChange={handleFileInputChange}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-cosmic-accent hover:bg-cosmic-accent-hover px-6 py-2 rounded-lg transition-colors"
-            >
-              Select Files
-            </button>
-          </div>
-        </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 bg-cosmic-light bg-opacity-20">
+            <TabsTrigger value="image" className="data-[state=active]:bg-cosmic-accent">
+              Image Generation
+            </TabsTrigger>
+            <TabsTrigger value="video" className="data-[state=active]:bg-cosmic-accent">
+              Video Generation
+            </TabsTrigger>
+            <TabsTrigger value="audio" className="data-[state=active]:bg-cosmic-accent">
+              Audio Generation
+            </TabsTrigger>
+          </TabsList>
 
-        {/* File Previews */}
-        {files.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold mb-4 text-cosmic-highlight">Ready to Upload</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {files.map((fileWithPreview) => (
-                <div
-                  key={fileWithPreview.id}
-                  className="bg-cosmic-light bg-opacity-20 rounded-lg p-4"
+          {/* Image Tab */}
+          <TabsContent value="image" className="space-y-6">
+            <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
+              <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">
+                MidJourney / Ideogram Image Generation
+              </h2>
+              <div className="space-y-4">
+                <Textarea
+                  placeholder="Describe the image you want to generate..."
+                  value={imagePrompt}
+                  onChange={(e) => setImagePrompt(e.target.value)}
+                  className="min-h-[100px] bg-cosmic-dark border-cosmic-light text-white"
+                />
+                <Button
+                  onClick={generateImage}
+                  disabled={isGenerating || !imagePrompt.trim()}
+                  className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
                 >
-                  <div className="aspect-video bg-cosmic-dark rounded mb-2 overflow-hidden">
-                    {fileWithPreview.file.type.startsWith('image/') ? (
-                      <img
-                        src={fileWithPreview.preview}
-                        alt={fileWithPreview.file.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <video
-                        src={fileWithPreview.preview}
-                        className="w-full h-full object-cover"
-                        controls
-                      />
-                    )}
+                  {isGenerating ? 'Generating...' : 'Generate Image'}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Video Tab */}
+          <TabsContent value="video" className="space-y-6">
+            <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
+              <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">
+                HeyGen / Sora Video Generation
+              </h2>
+              <div className="space-y-4">
+                <Textarea
+                  placeholder="Describe the video scene you want to generate..."
+                  value={videoPrompt}
+                  onChange={(e) => setVideoPrompt(e.target.value)}
+                  className="min-h-[100px] bg-cosmic-dark border-cosmic-light text-white"
+                />
+                <Button
+                  onClick={generateVideo}
+                  disabled={isGenerating || !videoPrompt.trim()}
+                  className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
+                >
+                  {isGenerating ? 'Generating...' : 'Generate Video'}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Audio Tab */}
+          <TabsContent value="audio" className="space-y-6">
+            <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
+              <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">
+                ElevenLabs Audio Generation
+              </h2>
+              <div className="space-y-4">
+                <Textarea
+                  placeholder="Describe the audio you want to generate..."
+                  value={audioPrompt}
+                  onChange={(e) => setAudioPrompt(e.target.value)}
+                  className="min-h-[100px] bg-cosmic-dark border-cosmic-light text-white"
+                />
+                <Button
+                  onClick={generateAudio}
+                  disabled={isGenerating || !audioPrompt.trim()}
+                  className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
+                >
+                  {isGenerating ? 'Generating...' : 'Generate Audio'}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* Generated Media Preview */}
+        {generatedMedia.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-bold mb-4 text-cosmic-highlight">Generated Media</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {generatedMedia.map((media) => (
+                <div key={media.id} className="bg-cosmic-light bg-opacity-20 rounded-lg p-4">
+                  <div className="aspect-video bg-cosmic-dark rounded mb-3 overflow-hidden">
+                    {renderMediaPreview(media)}
                   </div>
-                  <p className="text-sm font-medium truncate">{fileWithPreview.file.name}</p>
-                  <p className="text-xs text-cosmic-light">
-                    {formatFileSize(fileWithPreview.file.size)}
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={() => uploadFile(fileWithPreview)}
-                      disabled={uploadingFiles.has(fileWithPreview.id)}
-                      className="flex-1 bg-cosmic-accent hover:bg-opacity-80 disabled:opacity-50 px-3 py-1 rounded text-sm transition-colors"
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-cosmic-accent">{media.service}</p>
+                    <p className="text-xs text-cosmic-light line-clamp-2">{media.prompt}</p>
+                    <p className="text-xs text-cosmic-light">
+                      {media.createdAt.toLocaleDateString()}
+                    </p>
+                    <Button
+                      onClick={() => saveToLibrary(media)}
+                      className="w-full bg-green-600 hover:bg-green-700"
+                      size="sm"
                     >
-                      {uploadingFiles.has(fileWithPreview.id) ? 'Uploading...' : 'Upload'}
-                    </button>
-                    <button
-                      onClick={() =>
-                        setFiles((prev) => prev.filter((f) => f.id !== fileWithPreview.id))
-                      }
-                      className="px-3 py-1 rounded text-sm border border-red-500 text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-                    >
-                      Remove
-                    </button>
+                      Save to Library
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -332,46 +379,62 @@ const MediaStudio: React.FC = () => {
           </div>
         )}
 
-        {/* Uploaded Files */}
-        {uploadedFiles.length > 0 && (
-          <div>
-            <h2 className="text-2xl font-bold mb-4 text-cosmic-highlight">Uploaded Files</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {uploadedFiles.map((file) => (
-                <div key={file.id} className="bg-cosmic-light bg-opacity-20 rounded-lg p-4">
-                  <div className="aspect-video bg-cosmic-dark rounded mb-2 overflow-hidden">
-                    {file.type.startsWith('image/') ? (
-                      <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <video src={file.url} className="w-full h-full object-cover" controls />
+        {/* Media Library */}
+        {mediaAssets.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-bold mb-4 text-cosmic-highlight">Media Library</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {mediaAssets.map((asset) => (
+                <div key={asset.id} className="bg-cosmic-light bg-opacity-20 rounded-lg p-4">
+                  <div className="aspect-video bg-cosmic-dark rounded mb-3 overflow-hidden">
+                    {asset.media_type === 'image' && (
+                      <img
+                        src={asset.file_url}
+                        alt={asset.title}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                    {asset.media_type === 'video' && (
+                      <video src={asset.file_url} className="w-full h-full object-cover" controls />
+                    )}
+                    {asset.media_type === 'audio' && (
+                      <div className="flex items-center justify-center h-full bg-cosmic-light bg-opacity-20">
+                        <svg
+                          className="h-16 w-16 text-cosmic-accent"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M12 2C10.896 2 10 2.896 10 4V12C8.896 12 8 12.896 8 14C8 15.104 8.896 16 10 16V20C10 21.104 10.896 22 12 22C13.104 22 14 21.104 14 20V16C15.104 16 16 15.104 16 14C16 12.896 15.104 12 14 12V4C14 2.896 13.104 2 12 2Z" />
+                        </svg>
+                      </div>
                     )}
                   </div>
-                  <p className="text-sm font-medium truncate" title={file.name}>
-                    {file.name}
-                  </p>
-                  <p className="text-xs text-cosmic-light">{formatFileSize(file.size)}</p>
-                  <p className="text-xs text-cosmic-light">
-                    {file.uploadedAt.toLocaleDateString()}
-                  </p>
-                  <div className="mt-2 flex gap-1">
-                    <button
-                      onClick={() => window.open(file.url, '_blank')}
-                      className="flex-1 bg-cosmic-accent hover:bg-opacity-80 px-2 py-1 rounded text-xs transition-colors"
-                    >
-                      View
-                    </button>
-                    <button
-                      onClick={() => generateAIContent(file.name)}
-                      className="flex-1 bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded text-xs transition-colors"
-                    >
-                      AI Content
-                    </button>
-                    <button
-                      onClick={() => deleteFile(file.id)}
-                      className="px-2 py-1 rounded text-xs border border-red-500 text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-                    >
-                      Delete
-                    </button>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium truncate" title={asset.title}>
+                      {asset.title}
+                    </p>
+                    <p className="text-xs text-cosmic-light">{asset.ai_service}</p>
+                    <p className="text-xs text-cosmic-light">
+                      {new Date(asset.created_at).toLocaleDateString()}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => window.open(asset.file_url, '_blank')}
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        View
+                      </Button>
+                      <Button
+                        onClick={() => window.open(asset.file_url, '_blank')}
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        Download
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}

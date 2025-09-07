@@ -1,52 +1,83 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { RadialMenu } from '@/components/RadialMenu';
-import { CosmicBackground } from '@/components/CosmicBackground';
 import Auth from '@/components/Auth';
-import MissionControl from '@/pages/MissionControl';
-import OperationsHub from '@/pages/OperationsHub';
-import FinancialNexus from '@/pages/FinancialNexus';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import Home from '@/pages/Home';
+import Landing from '@/pages/Landing';
+import AdminPortal from '@/pages/AdminPortal';
+import ClientPortal from '@/pages/ClientPortal';
 import AiLab from '@/pages/AiLab';
-import MediaStudio from '@/pages/MediaStudio';
 import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
-import { UserProvider, useUser } from '@/context/UserContext';
+import { UserProvider } from '@/context/UserContext';
 
 const AppContent: React.FC = () => {
-  const { user, loading } = useUser();
-
-  if (loading) {
-    return (
-      <div className="relative min-h-screen bg-cosmic-dark text-white">
-        <CosmicBackground />
-        <div className="relative z-10 flex items-center justify-center min-h-screen">
-          <div className="text-xl">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Auth onAuthSuccess={() => {}} />;
-  }
-
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* cosmic background */}
-      <CosmicBackground />
-      {/* radial menu */}
-      <RadialMenu />
-      {/* main content */}
-      <div className="p-8 pt-24 max-w-5xl mx-auto">
-        <Routes>
-          <Route path="/" element={<MissionControl />} />
-          <Route path="/operations" element={<OperationsHub />} />
-          <Route path="/financial" element={<FinancialNexus />} />
-          <Route path="/lab" element={<AiLab />} />
-          <Route path="/media" element={<MediaStudio />} />
-          <Route path="/library" element={<KnowledgeLibrary />} />
-        </Routes>
-      </div>
-    </div>
+    <Routes>
+      {/* Public routes */}
+      <Route path="/" element={<Home />} />
+      <Route path="/auth" element={<Auth onAuthSuccess={() => {}} />} />
+      <Route path="/login" element={<Auth onAuthSuccess={() => {}} />} />
+
+      {/* Landing page - public but requires login to access features */}
+      <Route
+        path="/landing"
+        element={
+          <ProtectedRoute>
+            <Landing />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected routes with role-based access */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminPortal />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/portal"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <ClientPortal />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/lab"
+        element={
+          <ProtectedRoute requiredRole="agent">
+            <AiLab />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/library"
+        element={
+          <ProtectedRoute>
+            <KnowledgeLibrary />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Catch-all route for unmatched paths */}
+      <Route
+        path="*"
+        element={
+          <div className="relative min-h-screen bg-cosmic-dark text-white flex items-center justify-center">
+            <div className="text-center">
+              <h1 className="text-4xl font-bold mb-4">404 - Page Not Found</h1>
+              <p className="text-cosmic-accent">The page you're looking for doesn't exist.</p>
+            </div>
+          </div>
+        }
+      />
+    </Routes>
   );
 };
 
