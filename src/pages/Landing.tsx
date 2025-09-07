@@ -28,6 +28,14 @@ const Landing: React.FC = () => {
       path: '/lab',
     },
     {
+      id: 'marketplace',
+      title: 'Agent Marketplace',
+      description: 'Browse, install, and customize AI agent templates',
+      icon: '🛒',
+      color: 'from-cyan-400 to-cosmic-accent',
+      path: '/marketplace',
+    },
+    {
       id: 'knowledge',
       title: 'Knowledge',
       description: 'AI-powered knowledge library and document processing',

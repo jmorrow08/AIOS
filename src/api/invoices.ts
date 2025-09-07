@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logActivity } from '@/api/dashboard';
+import { autoGeneratePayout } from '@/api/hr';
 
 export type InvoiceStatus = 'pending' | 'paid' | 'overdue';
 
@@ -147,7 +148,7 @@ export const getInvoices = async (companyId?: string): Promise<InvoiceResponse> 
 };
 
 /**
- * Mark an invoice as paid
+ * Mark an invoice as paid and auto-generate payouts
  */
 export const markInvoicePaid = async (invoiceId: string): Promise<InvoiceResponse> => {
   try {
@@ -171,6 +172,44 @@ export const markInvoicePaid = async (invoiceId: string): Promise<InvoiceRespons
       };
     }
 
+    // Auto-generate payouts for linked services
+    if (data.service_id) {
+      try {
+        // Get service details to find linked employees/agents
+        const { data: serviceData, error: serviceError } = await supabase
+          .from('services')
+          .select(
+            `
+            *,
+            employees!inner(id, name, email),
+            ai_agents(id, name, role)
+          `,
+          )
+          .eq('id', data.service_id)
+          .single();
+
+        if (!serviceError && serviceData) {
+          // Try to auto-generate payout for the service
+          // This will use the payroll rules to determine the amount
+          const payoutResult = await autoGeneratePayout(
+            data.service_id,
+            serviceData.employees?.id, // Primary employee if available
+            serviceData.ai_agents?.id, // AI agent if available
+            undefined, // hoursWorked - could be calculated from service metadata
+          );
+
+          if (payoutResult.data) {
+            console.log('Auto-generated payout:', payoutResult.data);
+          } else {
+            console.warn('Failed to auto-generate payout:', payoutResult.error);
+          }
+        }
+      } catch (payoutError) {
+        console.warn('Error during auto-payout generation:', payoutError);
+        // Don't fail the invoice payment if payout generation fails
+      }
+    }
+
     // Log activity
     try {
       await logActivity(
@@ -181,6 +220,7 @@ export const markInvoicePaid = async (invoiceId: string): Promise<InvoiceRespons
           invoice_id: invoiceId,
           amount: data.amount,
           paid_date: paidDate,
+          auto_payout_triggered: !!data.service_id,
         },
       );
     } catch (logError) {

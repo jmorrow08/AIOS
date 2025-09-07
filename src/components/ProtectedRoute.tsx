@@ -7,7 +7,7 @@ import { AlertTriangle } from 'lucide-react';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'admin' | 'client' | 'agent';
+  requiredRole?: 'admin' | 'client' | 'agent' | 'marketing_agent';
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
@@ -59,6 +59,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
         return <Navigate to="/portal" replace />;
       case 'agent':
         return <Navigate to="/lab" replace />;
+      case 'marketing_agent':
+        return <Navigate to="/marketing" replace />;
       default:
         return <Navigate to="/auth" replace />;
     }
@@ -73,6 +75,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
         return <Navigate to="/portal" replace />;
       case 'agent':
         return <Navigate to="/lab" replace />;
+      case 'marketing_agent':
+        return <Navigate to="/marketing" replace />;
       default:
         return <Navigate to="/auth" replace />;
     }

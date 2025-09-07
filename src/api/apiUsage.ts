@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { createNotification } from '@/api/notifications';
 
 // Cost calculator interfaces
 export interface CostCalculation {
@@ -363,6 +364,14 @@ export const logApiUsageAndUpdateBudget = async (
       };
     }
 
+    // Check if budget notifications need to be sent
+    try {
+      await checkAndNotifyBudgetThresholds();
+    } catch (notificationError) {
+      console.error('Error checking budget notifications:', notificationError);
+      // Don't fail the usage logging if notifications fail
+    }
+
     return {
       success: true,
       error: null,
@@ -682,5 +691,65 @@ export const checkBudgetLimit = async (
       data: null,
       error: 'An unexpected error occurred while checking budget limit',
     };
+  }
+};
+
+/**
+ * Check budget thresholds and send notifications if needed
+ */
+const checkAndNotifyBudgetThresholds = async (): Promise<void> => {
+  try {
+    // Get current budget status
+    const { data: budgetCheck } = await checkBudgetLimit();
+
+    if (!budgetCheck) return;
+
+    const { currentUsage, budgetLimit, projectedUsage } = budgetCheck;
+    const percentageUsed = (currentUsage / budgetLimit) * 100;
+
+    // Get budget config for thresholds
+    const { data: budgetConfig } = await getBudgetConfig();
+
+    if (!budgetConfig?.alerts_enabled) return;
+
+    const { alert_thresholds } = budgetConfig;
+    const warningThreshold = alert_thresholds.warning;
+    const criticalThreshold = alert_thresholds.critical;
+
+    // Check if we should send warnings
+    let shouldSendWarning = false;
+    let warningLevel = '';
+
+    if (percentageUsed >= criticalThreshold) {
+      shouldSendWarning = true;
+      warningLevel = 'critical';
+    } else if (percentageUsed >= warningThreshold) {
+      shouldSendWarning = true;
+      warningLevel = 'warning';
+    }
+
+    if (shouldSendWarning) {
+      // Get admin users to notify
+      const { data: adminUsers } = await supabase.from('profiles').select('id').eq('role', 'admin');
+
+      if (adminUsers) {
+        const message = `Budget usage alert: ${percentageUsed.toFixed(
+          1,
+        )}% of monthly budget used ($${currentUsage.toFixed(2)} / $${budgetLimit.toFixed(2)})`;
+
+        for (const admin of adminUsers) {
+          await createNotification(
+            admin.id,
+            'budget',
+            `Budget ${warningLevel.charAt(0).toUpperCase() + warningLevel.slice(1)} Alert`,
+            message,
+            '/admin/budget',
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error checking budget thresholds:', error);
+    // Don't throw - budget notifications are not critical
   }
 };

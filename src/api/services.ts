@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 
-export type ServiceStatus = 'active' | 'paused' | 'completed';
+export type ServiceStatus = 'requested' | 'in_progress' | 'review' | 'completed' | 'archived';
 export type BillingType = 'subscription' | 'one-time';
 
 export interface Service {

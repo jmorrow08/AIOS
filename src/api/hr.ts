@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logActivity } from '@/api/dashboard';
+import { processPayment, validatePaymentRequest, PaymentRequest } from '@/lib/paymentServices';
 import { Employee } from '@/api/employees';
 import { Agent } from '@/agents/api';
 
@@ -56,6 +57,47 @@ export interface PayrollTransaction {
   notes?: string;
   created_at: string;
   updated_at: string;
+  // Enhanced fields
+  payroll_rule_id?: string;
+  approved_by?: string;
+  approved_at?: string;
+  payment_method?: 'zelle' | 'ach' | 'stripe' | 'check' | 'wire';
+  payment_reference?: string;
+  hours_worked?: number;
+  service_value?: number;
+  calculated_amount?: number;
+  final_amount: number;
+}
+
+export interface PayrollRule {
+  id: string;
+  name: string;
+  role?: string;
+  department?: string;
+  employee_id?: string;
+  agent_id?: string;
+  service_id?: string;
+  rate_type: 'hourly' | 'per-job' | 'salary' | 'percentage';
+  amount: number;
+  is_percentage: boolean;
+  is_active: boolean;
+  priority: number;
+  effective_date: string;
+  expiration_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeNotification {
+  id: string;
+  employee_id?: string;
+  agent_id?: string;
+  payroll_transaction_id: string;
+  notification_type: 'payout_created' | 'payout_approved' | 'payout_paid' | 'payout_failed';
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
 }
 
 export interface HRResponse<T> {
@@ -684,6 +726,601 @@ export const updatePayrollTransaction = async (
     return {
       data: null,
       error: 'An unexpected error occurred while updating the payroll transaction',
+    };
+  }
+};
+
+/**
+ * Get payroll rules
+ */
+export const getPayrollRules = async (): Promise<HRResponse<PayrollRule[]>> => {
+  try {
+    const { data, error } = await supabase
+      .from('payroll_rules')
+      .select('*')
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching payroll rules:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to fetch payroll rules',
+      };
+    }
+
+    return {
+      data: data || [],
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error fetching payroll rules:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while fetching payroll rules',
+    };
+  }
+};
+
+/**
+ * Create payroll rule
+ */
+export const createPayrollRule = async (
+  ruleData: Omit<PayrollRule, 'id' | 'created_at' | 'updated_at'>,
+): Promise<HRResponse<PayrollRule>> => {
+  try {
+    const { data, error } = await supabase
+      .from('payroll_rules')
+      .insert([ruleData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating payroll rule:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to create payroll rule',
+      };
+    }
+
+    return {
+      data,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error creating payroll rule:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while creating the payroll rule',
+    };
+  }
+};
+
+/**
+ * Update payroll rule
+ */
+export const updatePayrollRule = async (
+  ruleId: string,
+  updates: Partial<Omit<PayrollRule, 'id' | 'created_at' | 'updated_at'>>,
+): Promise<HRResponse<PayrollRule>> => {
+  try {
+    const { data, error } = await supabase
+      .from('payroll_rules')
+      .update(updates)
+      .eq('id', ruleId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating payroll rule:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to update payroll rule',
+      };
+    }
+
+    return {
+      data,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error updating payroll rule:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while updating the payroll rule',
+    };
+  }
+};
+
+/**
+ * Delete payroll rule
+ */
+export const deletePayrollRule = async (ruleId: string): Promise<HRResponse<boolean>> => {
+  try {
+    const { error } = await supabase.from('payroll_rules').delete().eq('id', ruleId);
+
+    if (error) {
+      console.error('Error deleting payroll rule:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to delete payroll rule',
+      };
+    }
+
+    return {
+      data: true,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error deleting payroll rule:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while deleting the payroll rule',
+    };
+  }
+};
+
+/**
+ * Calculate payout amount based on rules and service
+ */
+export const calculatePayoutAmount = async (
+  employeeId?: string,
+  agentId?: string,
+  serviceId?: string,
+  hoursWorked?: number,
+  serviceValue?: number,
+): Promise<HRResponse<{ amount: number; rule: PayrollRule | null }>> => {
+  try {
+    // Get applicable rules (highest priority first)
+    let query = supabase
+      .from('payroll_rules')
+      .select('*')
+      .eq('is_active', true)
+      .order('priority', { ascending: false });
+
+    // Apply filters based on the context
+    if (employeeId) {
+      query = query.or(`employee_id.is.null,employee_id.eq.${employeeId}`);
+    }
+    if (agentId) {
+      query = query.or(`agent_id.is.null,agent_id.eq.${agentId}`);
+    }
+    if (serviceId) {
+      query = query.or(`service_id.is.null,service_id.eq.${serviceId}`);
+    }
+
+    const { data: rules, error } = await query;
+
+    if (error) {
+      console.error('Error fetching applicable rules:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to calculate payout amount',
+      };
+    }
+
+    if (!rules || rules.length === 0) {
+      return {
+        data: { amount: 0, rule: null },
+        error: null,
+      };
+    }
+
+    // Find the best matching rule (highest priority)
+    const bestRule = rules[0];
+
+    let calculatedAmount = 0;
+
+    switch (bestRule.rate_type) {
+      case 'hourly':
+        calculatedAmount = (hoursWorked || 0) * bestRule.amount;
+        break;
+      case 'per-job':
+        calculatedAmount = bestRule.amount;
+        break;
+      case 'salary':
+        // For salary, we'd need to calculate based on period, but for now use full amount
+        calculatedAmount = bestRule.amount;
+        break;
+      case 'percentage':
+        calculatedAmount = (serviceValue || 0) * (bestRule.amount / 100);
+        break;
+    }
+
+    return {
+      data: { amount: calculatedAmount, rule: bestRule },
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error calculating payout amount:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while calculating the payout amount',
+    };
+  }
+};
+
+/**
+ * Auto-generate payout when service/invoice is completed
+ */
+export const autoGeneratePayout = async (
+  serviceId: string,
+  employeeId?: string,
+  agentId?: string,
+  hoursWorked?: number,
+): Promise<HRResponse<PayrollTransaction | null>> => {
+  try {
+    // Get service details to determine payout amount
+    const { data: service, error: serviceError } = await supabase
+      .from('services')
+      .select('*, invoices(amount)')
+      .eq('id', serviceId)
+      .single();
+
+    if (serviceError) {
+      console.error('Error fetching service:', serviceError);
+      return {
+        data: null,
+        error: serviceError.message || 'Failed to fetch service details',
+      };
+    }
+
+    // Calculate payout amount
+    const calculation = await calculatePayoutAmount(
+      employeeId,
+      agentId,
+      serviceId,
+      hoursWorked,
+      service?.invoices?.[0]?.amount,
+    );
+
+    if (calculation.error || !calculation.data) {
+      return {
+        data: null,
+        error: calculation.error || 'Failed to calculate payout amount',
+      };
+    }
+
+    // Create payout transaction
+    const payoutData = {
+      employee_id: employeeId,
+      agent_id: agentId,
+      service_id: serviceId,
+      amount: calculation.data.amount,
+      final_amount: calculation.data.amount,
+      period_start: new Date().toISOString().split('T')[0], // Today's date
+      period_end: new Date().toISOString().split('T')[0], // Today's date
+      status: 'pending' as const,
+      payroll_rule_id: calculation.data.rule?.id,
+      calculated_amount: calculation.data.amount,
+      service_value: service?.invoices?.[0]?.amount,
+      hours_worked: hoursWorked,
+      notes: `Auto-generated payout for service completion - Rule: ${
+        calculation.data.rule?.name || 'N/A'
+      }`,
+    };
+
+    const result = await createPayrollTransaction(payoutData);
+
+    if (result.data) {
+      // Create notification for the employee/agent
+      await createEmployeeNotification({
+        employee_id: employeeId,
+        agent_id: agentId,
+        payroll_transaction_id: result.data.id,
+        notification_type: 'payout_created',
+        title: 'New Payout Created',
+        message: `A payout of $${result.data.final_amount.toFixed(
+          2,
+        )} has been created for your recent work.`,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Unexpected error auto-generating payout:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while auto-generating the payout',
+    };
+  }
+};
+
+/**
+ * Approve payroll transaction
+ */
+export const approvePayrollTransaction = async (
+  transactionId: string,
+  approvedBy: string,
+  finalAmount?: number,
+): Promise<HRResponse<PayrollTransaction>> => {
+  try {
+    const updateData: any = {
+      status: 'processed',
+      approved_by: approvedBy,
+      approved_at: new Date().toISOString(),
+    };
+
+    if (finalAmount !== undefined) {
+      updateData.final_amount = finalAmount;
+    }
+
+    const result = await updatePayrollTransaction(transactionId, updateData);
+
+    if (result.data) {
+      // Create notification for approval
+      await createEmployeeNotification({
+        employee_id: result.data.employee_id,
+        agent_id: result.data.agent_id,
+        payroll_transaction_id: result.data.id,
+        notification_type: 'payout_approved',
+        title: 'Payout Approved',
+        message: `Your payout of $${result.data.final_amount.toFixed(
+          2,
+        )} has been approved and is ready for payment.`,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Unexpected error approving payroll transaction:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while approving the payroll transaction',
+    };
+  }
+};
+
+/**
+ * Mark payroll transaction as paid with payment processing
+ */
+export const markPayrollAsPaid = async (
+  transactionId: string,
+  paymentMethod: 'zelle' | 'ach' | 'stripe' | 'check' | 'wire',
+  paymentReference?: string,
+): Promise<HRResponse<PayrollTransaction>> => {
+  try {
+    // First get the transaction details
+    const { data: transaction, error: fetchError } = await supabase
+      .from('payroll_transactions')
+      .select('*')
+      .eq('id', transactionId)
+      .single();
+
+    if (fetchError || !transaction) {
+      return {
+        data: null,
+        error: 'Failed to fetch payroll transaction details',
+      };
+    }
+
+    // Prepare payment request
+    const paymentRequest: PaymentRequest = {
+      amount: transaction.final_amount,
+      recipientId: transaction.employee_id || transaction.agent_id || '',
+      recipientType: transaction.employee_id ? 'employee' : 'agent',
+      paymentMethod,
+      description: `Payroll payout for ${transaction.employee_id ? 'employee' : 'agent'}`,
+      payrollTransactionId: transactionId,
+    };
+
+    // Validate payment request
+    const validation = validatePaymentRequest(paymentRequest);
+    if (!validation.valid) {
+      return {
+        data: null,
+        error: `Payment validation failed: ${validation.errors.join(', ')}`,
+      };
+    }
+
+    // Process the payment
+    const paymentResult = await processPayment(paymentRequest);
+
+    // Update transaction with payment details
+    const updateData: any = {
+      status: paymentResult.success ? 'paid' : 'failed',
+      payment_date: paymentResult.success ? new Date().toISOString().split('T')[0] : undefined,
+      payment_method: paymentMethod,
+      payment_reference: paymentResult.reference || paymentReference,
+    };
+
+    if (paymentResult.transactionId) {
+      updateData.payment_reference = paymentResult.transactionId;
+    }
+
+    const result = await updatePayrollTransaction(transactionId, updateData);
+
+    if (result.data) {
+      // Create notification for payment result
+      const notificationType = paymentResult.success ? 'payout_paid' : 'payout_failed';
+      const title = paymentResult.success ? 'Payout Processed' : 'Payout Failed';
+      const message = paymentResult.success
+        ? `Your payout of $${result.data.final_amount.toFixed(
+            2,
+          )} has been processed via ${paymentMethod.toUpperCase()}.`
+        : `Your payout of $${result.data.final_amount.toFixed(2)} failed to process: ${
+            paymentResult.error
+          }`;
+
+      await createEmployeeNotification({
+        employee_id: result.data.employee_id,
+        agent_id: result.data.agent_id,
+        payroll_transaction_id: result.data.id,
+        notification_type: notificationType,
+        title,
+        message,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Unexpected error marking payroll as paid:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while marking the payroll as paid',
+    };
+  }
+};
+
+/**
+ * Bulk approve payroll transactions
+ */
+export const bulkApprovePayrollTransactions = async (
+  transactionIds: string[],
+  approvedBy: string,
+): Promise<HRResponse<PayrollTransaction[]>> => {
+  try {
+    const { data, error } = await supabase
+      .from('payroll_transactions')
+      .update({
+        status: 'processed',
+        approved_by: approvedBy,
+        approved_at: new Date().toISOString(),
+      })
+      .in('id', transactionIds)
+      .select();
+
+    if (error) {
+      console.error('Error bulk approving payroll transactions:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to bulk approve payroll transactions',
+      };
+    }
+
+    // Create notifications for each approved transaction
+    for (const transaction of data || []) {
+      await createEmployeeNotification({
+        employee_id: transaction.employee_id,
+        agent_id: transaction.agent_id,
+        payroll_transaction_id: transaction.id,
+        notification_type: 'payout_approved',
+        title: 'Payout Approved',
+        message: `Your payout of $${transaction.final_amount.toFixed(
+          2,
+        )} has been approved and is ready for payment.`,
+      });
+    }
+
+    return {
+      data: data || [],
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error bulk approving payroll transactions:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while bulk approving payroll transactions',
+    };
+  }
+};
+
+/**
+ * Get employee notifications
+ */
+export const getEmployeeNotifications = async (
+  employeeId?: string,
+  agentId?: string,
+): Promise<HRResponse<EmployeeNotification[]>> => {
+  try {
+    let query = supabase
+      .from('employee_notifications')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (employeeId) {
+      query = query.eq('employee_id', employeeId);
+    }
+    if (agentId) {
+      query = query.eq('agent_id', agentId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching employee notifications:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to fetch employee notifications',
+      };
+    }
+
+    return {
+      data: data || [],
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error fetching employee notifications:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while fetching employee notifications',
+    };
+  }
+};
+
+/**
+ * Create employee notification
+ */
+export const createEmployeeNotification = async (
+  notificationData: Omit<EmployeeNotification, 'id' | 'created_at'>,
+): Promise<HRResponse<EmployeeNotification>> => {
+  try {
+    const { data, error } = await supabase
+      .from('employee_notifications')
+      .insert([notificationData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating employee notification:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to create employee notification',
+      };
+    }
+
+    return {
+      data,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error creating employee notification:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while creating the employee notification',
+    };
+  }
+};
+
+/**
+ * Mark notification as read
+ */
+export const markNotificationAsRead = async (
+  notificationId: string,
+): Promise<HRResponse<boolean>> => {
+  try {
+    const { error } = await supabase
+      .from('employee_notifications')
+      .update({ is_read: true })
+      .eq('id', notificationId);
+
+    if (error) {
+      console.error('Error marking notification as read:', error);
+      return {
+        data: null,
+        error: error.message || 'Failed to mark notification as read',
+      };
+    }
+
+    return {
+      data: true,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error marking notification as read:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while marking the notification as read',
     };
   }
 };

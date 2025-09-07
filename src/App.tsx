@@ -12,10 +12,12 @@ import HRPortal from '@/pages/HRPortal';
 import ClientPortal from '@/pages/ClientPortal';
 import Onboarding from '@/pages/Onboarding';
 import AiLab from '@/pages/AiLab';
+import AgentMarketplace from '@/pages/AgentMarketplace';
 import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
 import MediaStudio from '@/pages/MediaStudio';
 import FinancialNexus from '@/pages/FinancialNexus';
 import OperationsHub from '@/pages/OperationsHub';
+import MarketingHub from '@/pages/MarketingHub';
 import Settings from '@/pages/Settings';
 import { UserProvider } from '@/context/UserContext';
 
@@ -104,6 +106,15 @@ const AppContent: React.FC = () => {
       />
 
       <Route
+        path="/marketplace"
+        element={
+          <ProtectedRoute>
+            <AgentMarketplace />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/library"
         element={
           <ProtectedRoute>
@@ -144,6 +155,15 @@ const AppContent: React.FC = () => {
         element={
           <ProtectedRoute>
             <OperationsHub />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/marketing"
+        element={
+          <ProtectedRoute>
+            <MarketingHub />
           </ProtectedRoute>
         }
       />

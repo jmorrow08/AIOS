@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logActivity } from '@/api/dashboard';
 import { Client } from '@/api/clients';
 import { Employee } from '@/api/employees';
+import { autoGeneratePayout } from '@/api/hr';
 
 export type JobStatus = 'Planned' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
 export type JobPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
@@ -192,10 +193,15 @@ export const getJobById = async (jobId: string): Promise<JobResponse> => {
 };
 
 /**
- * Update a job
+ * Update a job and auto-generate payouts when completed
  */
 export const updateJob = async (jobId: string, updateData: UpdateJobData): Promise<JobResponse> => {
   try {
+    // Get the current job data first to check if status is changing to completed
+    const { data: currentJob } = await getJobById(jobId);
+    const wasCompleted = currentJob && (currentJob as Job).status === 'Completed';
+    const willBeCompleted = updateData.status === 'Completed';
+
     const { data, error } = await supabase
       .from('jobs')
       .update({
@@ -222,12 +228,35 @@ export const updateJob = async (jobId: string, updateData: UpdateJobData): Promi
       };
     }
 
+    // Auto-generate payout when job is completed (but not if it was already completed)
+    if (!wasCompleted && willBeCompleted && data.assigned_to) {
+      try {
+        // Try to auto-generate payout for the completed job
+        const payoutResult = await autoGeneratePayout(
+          undefined, // No specific service ID for jobs
+          data.assigned_to, // Employee who completed the job
+          undefined, // No AI agent for jobs
+          data.actual_hours || data.estimated_hours, // Use actual hours if available, otherwise estimated
+        );
+
+        if (payoutResult.data) {
+          console.log('Auto-generated payout for completed job:', payoutResult.data);
+        } else {
+          console.warn('Failed to auto-generate payout for job:', payoutResult.error);
+        }
+      } catch (payoutError) {
+        console.warn('Error during auto-payout generation for job:', payoutError);
+        // Don't fail the job update if payout generation fails
+      }
+    }
+
     // Log activity
     try {
       await logActivity(`Job "${data.title}" was updated`, 'job', '/operations-hub', {
         job_id: data.id,
         job_title: data.title,
         status: data.status,
+        auto_payout_triggered: !wasCompleted && willBeCompleted,
       });
     } catch (logError) {
       console.warn('Failed to log job update activity:', logError);

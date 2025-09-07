@@ -44,6 +44,7 @@ export interface CreateAgentData {
   capabilities_json?: string[];
   status?: AgentStatus;
   created_by?: string;
+  company_id?: string;
 }
 
 export interface UpdateAgentData {

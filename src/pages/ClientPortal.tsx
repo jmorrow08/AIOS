@@ -2,17 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
 import { RadialMenu } from '@/components/RadialMenu';
 import { CosmicBackground } from '@/components/CosmicBackground';
+import { ServiceCard } from '@/components/ServiceCard';
 import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import {
   AlertCircle,
   CheckCircle,
@@ -22,34 +18,41 @@ import {
   Send,
   Receipt,
   ExternalLink,
+  TrendingUp,
+  Users,
+  DollarSign,
+  Star,
+  Archive,
+  Plus,
+  Filter,
+  Search,
 } from 'lucide-react';
-import { getServices, Service, ServiceStatus } from '@/api/services';
+import { getServices, Service, ServiceStatus, updateService } from '@/api/services';
 import { getInvoices, markInvoicePaid, Invoice, InvoiceStatus } from '@/api/invoices';
 import {
   createCheckoutSession,
   createCustomerPortalSession,
   getCompanyBillingInfo,
 } from '@/api/stripe';
+import { getPublicTestimonials, getFeedbackStats } from '@/api/serviceFeedback';
 
 const ClientPortal: React.FC = () => {
   const { user, profile, companyId } = useUser();
   const [services, setServices] = useState<Service[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [billingInfo, setBillingInfo] = useState<any>(null);
+  const [testimonials, setTestimonials] = useState<any[]>([]);
+  const [feedbackStats, setFeedbackStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState([
-    {
-      id: 1,
-      text: "Hi! I'm Jarvis, your AI assistant. How can I help you today?",
-      isBot: true,
-      timestamp: new Date(),
-    },
-  ]);
-  const [chatInput, setChatInput] = useState('');
+  const [activeTab, setActiveTab] = useState('active');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ServiceStatus | 'all'>('all');
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState<string | null>(null);
   const [isLoadingPortal, setIsLoadingPortal] = useState(false);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState<string | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -59,10 +62,18 @@ const ClientPortal: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        const [servicesResponse, invoicesResponse, billingResponse] = await Promise.all([
+        const [
+          servicesResponse,
+          invoicesResponse,
+          billingResponse,
+          testimonialsResponse,
+          feedbackStatsResponse,
+        ] = await Promise.all([
           getServices(companyId),
           getInvoices(companyId),
           getCompanyBillingInfo(companyId),
+          getPublicTestimonials(companyId),
+          getFeedbackStats(companyId),
         ]);
 
         if (servicesResponse.error) {
@@ -82,6 +93,25 @@ const ClientPortal: React.FC = () => {
         } else {
           setBillingInfo(billingResponse.data);
         }
+
+        if (testimonialsResponse.error) {
+          console.warn('Failed to load testimonials:', testimonialsResponse.error);
+        } else {
+          const testimonialData = testimonialsResponse.data;
+          setTestimonials(
+            Array.isArray(testimonialData)
+              ? testimonialData
+              : testimonialData
+              ? [testimonialData]
+              : [],
+          );
+        }
+
+        if (feedbackStatsResponse.error) {
+          console.warn('Failed to load feedback stats:', feedbackStatsResponse.error);
+        } else {
+          setFeedbackStats(feedbackStatsResponse.data);
+        }
       } catch (err) {
         setError('An unexpected error occurred while loading data');
         console.error('Error loading client portal data:', err);
@@ -92,6 +122,47 @@ const ClientPortal: React.FC = () => {
 
     loadData();
   }, [companyId]);
+
+  // Filter services based on search and status
+  const filteredServices = services.filter((service) => {
+    const matchesSearch =
+      service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (service.description &&
+        service.description.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesStatus = statusFilter === 'all' || service.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Separate active and completed services
+  const activeServices = filteredServices.filter(
+    (service) => !['completed', 'archived'].includes(service.status as ServiceStatus),
+  );
+  const completedServices = filteredServices.filter((service) =>
+    ['completed', 'archived'].includes(service.status as ServiceStatus),
+  );
+
+  const handleServiceStatusUpdate = async (serviceId: string, newStatus: ServiceStatus) => {
+    try {
+      setIsUpdatingStatus(serviceId);
+      const response = await updateService(serviceId, { status: newStatus });
+
+      if (response.error) {
+        setError(`Failed to update service status: ${response.error}`);
+      } else {
+        // Update the service in the local state
+        setServices((prev) =>
+          prev.map((service) =>
+            service.id === serviceId ? { ...service, status: newStatus } : service,
+          ),
+        );
+      }
+    } catch (err) {
+      setError('An unexpected error occurred while updating service status');
+      console.error('Error updating service status:', err);
+    } finally {
+      setIsUpdatingStatus(null);
+    }
+  };
 
   const handlePayInvoice = async (invoiceId: string) => {
     try {
@@ -168,56 +239,41 @@ const ClientPortal: React.FC = () => {
     }
   };
 
-  const sendChatMessage = () => {
-    if (!chatInput.trim()) return;
-
-    const newMessage = {
-      id: chatMessages.length + 1,
-      text: chatInput,
-      isBot: false,
-      timestamp: new Date(),
-    };
-
-    setChatMessages((prev) => [...prev, newMessage]);
-    setChatInput('');
-
-    // Simulate AI response
-    setTimeout(() => {
-      const botResponse = {
-        id: chatMessages.length + 2,
-        text: 'Thank you for your message! This is a demo AI helpdesk. In a real implementation, this would connect to our AI system to provide intelligent assistance with your services and invoices.',
-        isBot: true,
-        timestamp: new Date(),
-      };
-      setChatMessages((prev) => [...prev, botResponse]);
-    }, 1000);
-  };
-
   const getStatusColor = (status: ServiceStatus | InvoiceStatus) => {
     switch (status) {
-      case 'active':
-      case 'paid':
-        return 'bg-green-500';
+      case 'requested':
       case 'pending':
-        return 'bg-yellow-500';
-      case 'overdue':
-        return 'bg-red-500';
-      case 'paused':
-        return 'bg-gray-500';
+        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+      case 'in_progress':
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+      case 'review':
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/50';
       case 'completed':
-        return 'bg-blue-500';
+      case 'paid':
+        return 'bg-green-500/20 text-green-400 border-green-500/50';
+      case 'archived':
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/50';
+      case 'overdue':
+        return 'bg-red-500/20 text-red-400 border-red-500/50';
       default:
-        return 'bg-gray-500';
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/50';
     }
   };
 
   const getStatusIcon = (status: ServiceStatus | InvoiceStatus) => {
     switch (status) {
-      case 'active':
-      case 'paid':
-        return <CheckCircle className="w-4 h-4" />;
+      case 'requested':
       case 'pending':
         return <Clock className="w-4 h-4" />;
+      case 'in_progress':
+        return <AlertCircle className="w-4 h-4" />;
+      case 'review':
+        return <CheckCircle className="w-4 h-4" />;
+      case 'completed':
+      case 'paid':
+        return <CheckCircle className="w-4 h-4" />;
+      case 'archived':
+        return <Archive className="w-4 h-4" />;
       case 'overdue':
         return <AlertCircle className="w-4 h-4" />;
       default:
@@ -236,16 +292,26 @@ const ClientPortal: React.FC = () => {
               <Skeleton className="h-10 w-64 mb-2" />
               <Skeleton className="h-6 w-48" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-              {[...Array(3)].map((_, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {[...Array(4)].map((_, i) => (
                 <div key={i} className="bg-white/5 rounded-lg p-6 border border-white/10">
                   <div className="mb-4">
                     <Skeleton className="h-6 w-32" />
                   </div>
                   <div className="space-y-3">
+                    <Skeleton className="h-8 w-16" />
                     <Skeleton className="h-4 w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white/5 rounded-lg p-6 border border-white/10">
+                  <Skeleton className="h-6 w-48 mb-4" />
+                  <div className="space-y-3">
                     <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-3/4" />
                   </div>
                 </div>
               ))}
@@ -275,150 +341,319 @@ const ClientPortal: React.FC = () => {
               )}
             </div>
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white/5 rounded-lg p-6 border border-white/10">
-                <div className="pb-2">
-                  <h4 className="text-white text-sm font-semibold">Active Services</h4>
-                </div>
-                <div className="text-2xl font-bold text-cosmic-accent">
-                  {services.filter((s) => s.status === 'active').length}
-                </div>
-              </div>
+            {/* Enhanced Quick Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card className="bg-white/5 border border-white/10">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-cosmic-accent text-sm font-medium">Active Services</p>
+                      <p className="text-2xl font-bold text-cosmic-accent">
+                        {activeServices.length}
+                      </p>
+                    </div>
+                    <TrendingUp className="w-8 h-8 text-cosmic-accent" />
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="bg-white/5 rounded-lg p-6 border border-white/10">
-                <div className="pb-2">
-                  <h4 className="text-white text-sm font-semibold">Pending Invoices</h4>
-                </div>
-                <div className="text-2xl font-bold text-yellow-400">
-                  {invoices.filter((i) => i.status === 'pending').length}
-                </div>
-              </div>
+              <Card className="bg-white/5 border border-white/10">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-cosmic-accent text-sm font-medium">Pending Invoices</p>
+                      <p className="text-2xl font-bold text-yellow-400">
+                        {invoices.filter((i) => i.status === 'pending').length}
+                      </p>
+                    </div>
+                    <Receipt className="w-8 h-8 text-yellow-400" />
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="bg-white/5 rounded-lg p-6 border border-white/10">
-                <div className="pb-2">
-                  <h4 className="text-white text-sm font-semibold">Outstanding Amount</h4>
-                </div>
-                <div className="text-2xl font-bold text-red-400">
-                  $
-                  {invoices
-                    .filter((i) => i.status === 'pending' || i.status === 'overdue')
-                    .reduce((sum, i) => sum + i.amount, 0)
-                    .toFixed(2)}
-                </div>
-              </div>
+              <Card className="bg-white/5 border border-white/10">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-cosmic-accent text-sm font-medium">Outstanding Amount</p>
+                      <p className="text-2xl font-bold text-red-400">
+                        $
+                        {invoices
+                          .filter((i) => i.status === 'pending' || i.status === 'overdue')
+                          .reduce((sum, i) => sum + i.amount, 0)
+                          .toFixed(2)}
+                      </p>
+                    </div>
+                    <DollarSign className="w-8 h-8 text-red-400" />
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="bg-white/5 rounded-lg p-6 border border-white/10">
-                <div className="pb-2">
-                  <h4 className="text-white text-sm font-semibold">Monthly Usage</h4>
-                </div>
-                <div className="text-2xl font-bold text-purple-400">
-                  ${billingInfo?.usage?.totalCost?.toFixed(2) || '0.00'}
-                </div>
-              </div>
+              <Card className="bg-white/5 border border-white/10">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-cosmic-accent text-sm font-medium">Avg Rating</p>
+                      <p className="text-2xl font-bold text-purple-400">
+                        {feedbackStats?.averageRating?.toFixed(1) || 'N/A'}
+                      </p>
+                    </div>
+                    <Star className="w-8 h-8 text-purple-400" />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
 
           {/* Main Content Tabs */}
-          <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-white/10">
-              <TabsTrigger value="overview" className="data-[state=active]:bg-cosmic-accent">
-                Overview
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-4 bg-white/10">
+              <TabsTrigger value="active" className="data-[state=active]:bg-cosmic-accent">
+                Active Services ({activeServices.length})
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="data-[state=active]:bg-cosmic-accent">
+                Completed ({completedServices.length})
               </TabsTrigger>
               <TabsTrigger value="billing" className="data-[state=active]:bg-cosmic-accent">
-                Billing
+                Billing & Payments
               </TabsTrigger>
-              <TabsTrigger value="support" className="data-[state=active]:bg-cosmic-accent">
-                Support
+              <TabsTrigger value="feedback" className="data-[state=active]:bg-cosmic-accent">
+                Reviews & Testimonials
               </TabsTrigger>
             </TabsList>
 
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Services List */}
-                <div className="lg:col-span-2">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
-                    <div className="p-6 border-b border-white/10">
-                      <h3 className="text-white flex items-center gap-2 text-xl font-semibold">
-                        <CheckCircle className="w-5 h-5" />
-                        Your Services
-                      </h3>
-                      <p className="text-cosmic-accent mt-2">
-                        Manage and monitor your active services
-                      </p>
+            {/* Active Services Tab */}
+            <TabsContent value="active" className="space-y-6">
+              {/* Search and Filter Controls */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-6">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cosmic-accent w-4 h-4" />
+                      <Input
+                        placeholder="Search services..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10 bg-white/5 border-white/20 text-white placeholder-cosmic-accent"
+                      />
                     </div>
-                    <div className="p-6">
-                      {services.length === 0 ? (
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as ServiceStatus | 'all')}
+                      className="px-3 py-2 bg-white/5 border border-white/20 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-cosmic-accent"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="requested">Requested</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="review">Review</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Services Grid */}
+              {activeServices.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-8">
+                    <CheckCircle className="w-16 h-16 text-cosmic-accent mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-white mb-2">No Active Services</h3>
+                    <p className="text-cosmic-accent">
+                      {searchQuery || statusFilter !== 'all'
+                        ? 'No services match your current filters.'
+                        : 'All your services are completed or archived.'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {activeServices.map((service) => (
+                    <ServiceCard
+                      key={service.id}
+                      service={service}
+                      onStatusUpdate={handleServiceStatusUpdate}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Completed Services Tab */}
+            <TabsContent value="completed" className="space-y-6">
+              {/* Search and Filter Controls */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-6">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cosmic-accent w-4 h-4" />
+                      <Input
+                        placeholder="Search completed services..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10 bg-white/5 border-white/20 text-white placeholder-cosmic-accent"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as ServiceStatus | 'all')}
+                      className="px-3 py-2 bg-white/5 border border-white/20 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-cosmic-accent"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="completed">Completed</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Completed Services Grid */}
+              {completedServices.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-8">
+                    <Archive className="w-16 h-16 text-cosmic-accent mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-white mb-2">No Completed Services</h3>
+                    <p className="text-cosmic-accent">
+                      {searchQuery || statusFilter !== 'all'
+                        ? 'No services match your current filters.'
+                        : "You haven't completed any services yet."}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {completedServices.map((service) => (
+                    <ServiceCard
+                      key={service.id}
+                      service={service}
+                      onStatusUpdate={handleServiceStatusUpdate}
+                      compact
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Billing & Payments Tab */}
+            <TabsContent value="billing" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Invoices and Payments */}
+                <div className="lg:col-span-2">
+                  <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Receipt className="w-5 h-5" />
+                        Invoices & Payments
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {invoices.length === 0 ? (
                         <div className="text-center py-8">
-                          <p className="text-cosmic-accent">No services found.</p>
+                          <p className="text-cosmic-accent">No invoices found.</p>
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          {services.map((service) => (
+                          {invoices.map((invoice) => (
                             <div
-                              key={service.id}
+                              key={invoice.id}
                               className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/10"
                             >
                               <div className="flex-1">
-                                <h4 className="font-semibold text-white">{service.name}</h4>
-                                <p className="text-sm text-cosmic-accent mt-1">
-                                  {service.description || 'No description available'}
-                                </p>
-                                <div className="flex items-center gap-4 mt-2 text-sm">
-                                  <span className="text-cosmic-accent">
-                                    ${service.price}/
-                                    {service.billing_type === 'subscription' ? 'month' : 'project'}
-                                  </span>
-                                  {service.start_date && (
-                                    <span className="text-cosmic-accent">
-                                      Started: {new Date(service.start_date).toLocaleDateString()}
-                                    </span>
-                                  )}
+                                <div className="flex items-center gap-3">
+                                  <div>
+                                    <h4 className="font-semibold text-white">
+                                      Invoice #{invoice.id.slice(0, 8)}
+                                    </h4>
+                                    <p className="text-sm text-cosmic-accent">
+                                      Due: {new Date(invoice.due_date).toLocaleDateString()}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
-                                  service.status,
-                                )}`}
-                              >
-                                {getStatusIcon(service.status)}
-                                {service.status.charAt(0).toUpperCase() + service.status.slice(1)}
-                              </span>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <p className="text-lg font-bold text-white">
+                                    ${invoice.amount.toFixed(2)}
+                                  </p>
+                                  <Badge className={getStatusColor(invoice.status)}>
+                                    {getStatusIcon(invoice.status)}
+                                    <span className="ml-1 capitalize">{invoice.status}</span>
+                                  </Badge>
+                                </div>
+                                {(invoice.status === 'pending' || invoice.status === 'overdue') && (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleStripeCheckout(invoice)}
+                                      disabled={isProcessingCheckout === invoice.id}
+                                      className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      {isProcessingCheckout === invoice.id
+                                        ? 'Processing...'
+                                        : 'Pay Now'}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handlePayInvoice(invoice.id)}
+                                      disabled={isProcessingPayment === invoice.id}
+                                      className="bg-green-600 hover:bg-green-700"
+                                    >
+                                      {isProcessingPayment === invoice.id
+                                        ? 'Processing...'
+                                        : 'Mark Paid'}
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
                       )}
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                {/* Usage Summary */}
-                <div className="lg:col-span-1">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
-                    <div className="p-6 border-b border-white/10">
-                      <h3 className="text-white flex items-center gap-2 text-xl font-semibold">
+                {/* Billing Summary & Portal */}
+                <div className="lg:col-span-1 space-y-6">
+                  {/* Billing Portal Access */}
+                  <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
                         <CreditCard className="w-5 h-5" />
-                        Usage Summary
-                      </h3>
-                      <p className="text-cosmic-accent mt-2">Current month overview</p>
-                    </div>
-                    <div className="p-6">
+                        Billing Portal
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        onClick={handleOpenCustomerPortal}
+                        disabled={isLoadingPortal}
+                        className="w-full bg-cosmic-accent hover:bg-cosmic-accent/80 text-cosmic-dark font-semibold"
+                      >
+                        {isLoadingPortal ? 'Loading...' : 'Manage Billing'}
+                      </Button>
+                      <p className="text-xs text-cosmic-accent mt-2">
+                        Update payment methods, view receipts, and manage subscriptions
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Usage Summary */}
+                  <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
+                    <CardHeader>
+                      <CardTitle className="text-white">Usage Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
                       <div className="space-y-4">
                         <div className="flex justify-between">
-                          <span className="text-cosmic-accent">API Cost:</span>
+                          <span className="text-cosmic-accent">Monthly Cost:</span>
                           <span className="text-white font-medium">
                             ${billingInfo?.usage?.totalCost?.toFixed(2) || '0.00'}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-cosmic-accent">Tokens Used:</span>
-                          <span className="text-white font-medium">
-                            {billingInfo?.usage?.totalTokens || 0}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-cosmic-accent">Requests:</span>
+                          <span className="text-cosmic-accent">API Requests:</span>
                           <span className="text-white font-medium">
                             {billingInfo?.usage?.totalRequests || 0}
                           </span>
@@ -438,302 +673,105 @@ const ClientPortal: React.FC = () => {
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             </TabsContent>
 
-            {/* Billing Tab */}
-            <TabsContent value="billing" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Invoices Table */}
-                <div className="lg:col-span-2">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
-                    <div className="p-6 border-b border-white/10">
-                      <h3 className="text-white flex items-center gap-2 text-xl font-semibold">
-                        <Receipt className="w-5 h-5" />
-                        Invoices & Payments
-                      </h3>
-                      <p className="text-cosmic-accent mt-2">View and manage your invoices</p>
-                    </div>
-                    <div className="p-6">
-                      {invoices.length === 0 ? (
-                        <div className="text-center py-8">
-                          <p className="text-cosmic-accent">No invoices found.</p>
+            {/* Reviews & Testimonials Tab */}
+            <TabsContent value="feedback" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Feedback Statistics */}
+                <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
+                  <CardHeader>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Star className="w-5 h-5" />
+                      Your Feedback Stats
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="text-center">
+                        <div className="text-4xl font-bold text-cosmic-accent mb-2">
+                          {feedbackStats?.averageRating?.toFixed(1) || 'N/A'}
                         </div>
-                      ) : (
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="border-white/10">
-                              <TableHead className="text-cosmic-accent">Invoice #</TableHead>
-                              <TableHead className="text-cosmic-accent">Amount</TableHead>
-                              <TableHead className="text-cosmic-accent">Due Date</TableHead>
-                              <TableHead className="text-cosmic-accent">Status</TableHead>
-                              <TableHead className="text-cosmic-accent">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {invoices.map((invoice) => (
-                              <TableRow key={invoice.id} className="border-white/10">
-                                <TableCell className="text-white font-medium">
-                                  {invoice.id.slice(0, 8)}
-                                </TableCell>
-                                <TableCell className="text-white font-medium">
-                                  ${invoice.amount.toFixed(2)}
-                                </TableCell>
-                                <TableCell className="text-cosmic-accent">
-                                  {new Date(invoice.due_date).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell>
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
-                                      invoice.status,
-                                    )}`}
-                                  >
-                                    {getStatusIcon(invoice.status)}
-                                    {invoice.status.charAt(0).toUpperCase() +
-                                      invoice.status.slice(1)}
-                                  </span>
-                                </TableCell>
-                                <TableCell>
-                                  {(invoice.status === 'pending' ||
-                                    invoice.status === 'overdue') && (
-                                    <div className="flex gap-2">
-                                      <Button
-                                        size="sm"
-                                        onClick={() => handleStripeCheckout(invoice)}
-                                        disabled={isProcessingCheckout === invoice.id}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                                      >
-                                        {isProcessingCheckout === invoice.id
-                                          ? 'Processing...'
-                                          : 'Pay with Card'}
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        onClick={() => handlePayInvoice(invoice.id)}
-                                        disabled={isProcessingPayment === invoice.id}
-                                        className="bg-green-600 hover:bg-green-700 text-white"
-                                      >
-                                        {isProcessingPayment === invoice.id
-                                          ? 'Processing...'
-                                          : 'Mark Paid'}
-                                      </Button>
-                                    </div>
-                                  )}
-                                  {invoice.status === 'paid' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white bg-green-500">
-                                      Paid on{' '}
-                                      {invoice.paid_date
-                                        ? new Date(invoice.paid_date).toLocaleDateString()
-                                        : 'N/A'}
-                                    </span>
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Billing Actions */}
-                <div className="lg:col-span-1">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
-                    <div className="p-6 border-b border-white/10">
-                      <h3 className="text-white flex items-center gap-2 text-xl font-semibold">
-                        <CreditCard className="w-5 h-5" />
-                        Billing Portal
-                      </h3>
-                      <p className="text-cosmic-accent mt-2">Manage your billing information</p>
-                    </div>
-                    <div className="p-6">
-                      <div className="space-y-4">
-                        <Button
-                          onClick={handleOpenCustomerPortal}
-                          disabled={isLoadingPortal}
-                          className="w-full bg-cosmic-accent hover:bg-cosmic-accent/80 text-cosmic-dark font-semibold"
-                        >
-                          {isLoadingPortal ? (
-                            'Loading...'
-                          ) : (
-                            <>
-                              <ExternalLink className="w-4 h-4 mr-2" />
-                              Open Billing Portal
-                            </>
-                          )}
-                        </Button>
-                        <p className="text-xs text-cosmic-accent">
-                          Manage payment methods, view receipts, and update billing information
+                        <div className="flex justify-center mb-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-5 h-5 ${
+                                star <= (feedbackStats?.averageRating || 0)
+                                  ? 'text-yellow-400 fill-current'
+                                  : 'text-gray-400'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-cosmic-accent text-sm">
+                          Based on {feedbackStats?.totalFeedback || 0} reviews
                         </p>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Plan Information */}
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 mt-6">
-                    <div className="p-6 border-b border-white/10">
-                      <h3 className="text-white text-xl font-semibold">Current Plan</h3>
-                    </div>
-                    <div className="p-6">
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-cosmic-accent">Plan:</span>
-                          <span className="text-white font-medium">
-                            {billingInfo?.plan?.plan_tier || 'starter'}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-cosmic-accent">Public Testimonials:</span>
+                          <span className="text-white">
+                            {feedbackStats?.publicTestimonials || 0}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-cosmic-accent">Monthly Limit:</span>
-                          <span className="text-white font-medium">
-                            ${billingInfo?.plan?.monthly_limit_usd || 100}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-cosmic-accent">Current Usage:</span>
-                          <span className="text-white font-medium">
-                            ${billingInfo?.usage?.totalCost?.toFixed(2) || '0.00'}
-                          </span>
-                        </div>
-                        <div className="pt-3 border-t border-white/10">
-                          <div className="w-full bg-white/10 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                (billingInfo?.usage?.totalCost || 0) >
-                                (billingInfo?.plan?.monthly_limit_usd || 100) * 0.8
-                                  ? 'bg-red-500'
-                                  : 'bg-green-500'
-                              }`}
-                              style={{
-                                width: `${Math.min(
-                                  ((billingInfo?.usage?.totalCost || 0) /
-                                    (billingInfo?.plan?.monthly_limit_usd || 100)) *
-                                    100,
-                                  100,
-                                )}%`,
-                              }}
-                            ></div>
-                          </div>
-                          <p className="text-xs text-cosmic-accent mt-1">
-                            {(
-                              ((billingInfo?.usage?.totalCost || 0) /
-                                (billingInfo?.plan?.monthly_limit_usd || 100)) *
-                              100
-                            ).toFixed(0)}
-                            % of limit used
-                          </p>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-cosmic-accent">Total Reviews:</span>
+                          <span className="text-white">{feedbackStats?.totalFeedback || 0}</span>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
+                  </CardContent>
+                </Card>
 
-            {/* Support Tab */}
-            <TabsContent value="support" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* AI Helpdesk Chat */}
-                <div className="lg:col-span-2">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 h-fit">
-                    <div className="p-6 border-b border-white/10">
-                      <h3 className="text-white flex items-center gap-2 text-xl font-semibold">
-                        <MessageCircle className="w-5 h-5" />
-                        AI Helpdesk
-                      </h3>
-                      <p className="text-cosmic-accent mt-2">
-                        Get instant help from our AI assistant
-                      </p>
-                    </div>
-                    <div className="p-6 flex flex-col h-96">
-                      {/* Chat Messages */}
-                      <div className="flex-1 overflow-y-auto space-y-4 mb-4 p-2">
-                        {chatMessages.map((message) => (
+                {/* Public Testimonials */}
+                <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
+                  <CardHeader>
+                    <CardTitle className="text-white">Public Testimonials</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {testimonials.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-cosmic-accent">No public testimonials yet.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {testimonials.slice(0, 5).map((testimonial: any) => (
                           <div
-                            key={message.id}
-                            className={`flex ${message.isBot ? 'justify-start' : 'justify-end'}`}
+                            key={testimonial.id}
+                            className="p-4 bg-white/5 rounded-lg border border-white/10"
                           >
-                            <div
-                              className={`max-w-xs px-4 py-2 rounded-lg ${
-                                message.isBot
-                                  ? 'bg-white/10 text-white'
-                                  : 'bg-cosmic-accent text-cosmic-dark'
-                              }`}
-                            >
-                              <p className="text-sm">{message.text}</p>
-                              <p className="text-xs opacity-70 mt-1">
-                                {message.timestamp.toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </p>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="flex">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Star
+                                    key={star}
+                                    className={`w-4 h-4 ${
+                                      star <= testimonial.rating
+                                        ? 'text-yellow-400 fill-current'
+                                        : 'text-gray-400'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-xs text-cosmic-accent">
+                                {new Date(testimonial.created_at).toLocaleDateString()}
+                              </span>
                             </div>
+                            {testimonial.comment && (
+                              <p className="text-white text-sm">"{testimonial.comment}"</p>
+                            )}
                           </div>
                         ))}
                       </div>
-
-                      {/* Chat Input */}
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={chatInput}
-                          onChange={(e) => setChatInput(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
-                          placeholder="Type your message..."
-                          className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-md text-white placeholder-cosmic-accent focus:outline-none focus:ring-2 focus:ring-cosmic-accent"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={sendChatMessage}
-                          disabled={!chatInput.trim()}
-                          className="bg-cosmic-accent hover:bg-cosmic-accent/80 text-cosmic-dark"
-                        >
-                          <Send className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Support Information */}
-                <div className="lg:col-span-1">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
-                    <div className="p-6 border-b border-white/10">
-                      <h3 className="text-white text-xl font-semibold">Support Options</h3>
-                    </div>
-                    <div className="p-6">
-                      <div className="space-y-4">
-                        <div className="p-4 bg-white/5 rounded-lg">
-                          <h4 className="text-white font-medium">Email Support</h4>
-                          <p className="text-cosmic-accent text-sm mt-1">support@company.com</p>
-                          <p className="text-cosmic-accent text-xs mt-2">
-                            Response within 24 hours
-                          </p>
-                        </div>
-                        <div className="p-4 bg-white/5 rounded-lg">
-                          <h4 className="text-white font-medium">Documentation</h4>
-                          <p className="text-cosmic-accent text-sm mt-1">
-                            Access our knowledge base
-                          </p>
-                          <Button
-                            size="sm"
-                            className="mt-2 w-full bg-cosmic-accent hover:bg-cosmic-accent/80 text-cosmic-dark"
-                          >
-                            View Docs
-                          </Button>
-                        </div>
-                        <div className="p-4 bg-white/5 rounded-lg">
-                          <h4 className="text-white font-medium">Emergency Support</h4>
-                          <p className="text-cosmic-accent text-sm mt-1">For critical issues</p>
-                          <p className="text-cosmic-accent text-xs mt-2">+1 (555) 123-4567</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             </TabsContent>
           </Tabs>
