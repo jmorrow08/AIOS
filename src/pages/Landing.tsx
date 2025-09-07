@@ -36,6 +36,14 @@ const Landing: React.FC = () => {
       path: '/library',
     },
     {
+      id: 'media-studio',
+      title: 'Media Studio',
+      description: 'Professional media production and content creation tools',
+      icon: '🎬',
+      color: 'from-pink-400 to-red-500',
+      path: '/media',
+    },
+    {
       id: 'automation',
       title: 'Automation',
       description: 'Streamlined operations and workflow automation',
@@ -44,12 +52,20 @@ const Landing: React.FC = () => {
       path: '/operations',
     },
     {
-      id: 'pricing',
-      title: 'Pricing',
-      description: 'Flexible pricing plans for your business needs',
+      id: 'services',
+      title: 'Services',
+      description: 'Client management and service delivery platform',
+      icon: '🏢',
+      color: 'from-indigo-400 to-purple-600',
+      path: '/portal',
+    },
+    {
+      id: 'finance',
+      title: 'Finance',
+      description: 'Advanced financial tracking and invoice management',
       icon: '💰',
       color: 'from-yellow-400 to-orange-500',
-      path: '#pricing',
+      path: '/finance',
     },
   ];
 
@@ -86,7 +102,7 @@ const Landing: React.FC = () => {
       scale: 1,
       y: 0,
       transition: {
-        type: 'spring',
+        type: 'spring' as const,
         stiffness: 300,
         damping: 20,
       },
@@ -100,11 +116,20 @@ const Landing: React.FC = () => {
       scale: 1,
       transition: {
         delay: index * 0.2,
-        type: 'spring',
+        type: 'spring' as const,
         stiffness: 200,
         damping: 15,
       },
     }),
+    floating: {
+      y: [-10, 10, -10],
+      transition: {
+        duration: 3 + Math.random() * 2,
+        repeat: Infinity,
+        ease: 'easeInOut' as const,
+        delay: Math.random() * 2,
+      },
+    },
   };
 
   return (
@@ -183,7 +208,7 @@ const Landing: React.FC = () => {
                       transform: 'translate(-50%, -50%)',
                     }}
                     initial="hidden"
-                    animate="visible"
+                    animate={['visible', 'floating']}
                     exit="hidden"
                     variants={radialItemVariants}
                     custom={index}
@@ -234,7 +259,7 @@ const Landing: React.FC = () => {
         </motion.div>
 
         {/* CTA Section */}
-        <motion.div className="text-center" variants={itemVariants}>
+        <motion.div className="text-center space-y-6" variants={itemVariants}>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Button
               size="lg"
@@ -244,6 +269,22 @@ const Landing: React.FC = () => {
               <motion.span className="flex items-center gap-3" whileHover={{ gap: 12 }}>
                 <span>🚀</span>
                 <span>Enter Jarvis HQ</span>
+                <span>→</span>
+              </motion.span>
+            </Button>
+          </motion.div>
+
+          {/* Demo Button */}
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-2 border-cosmic-highlight text-cosmic-highlight hover:bg-cosmic-highlight hover:text-cosmic-dark px-12 py-6 text-xl font-semibold shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105"
+              onClick={() => navigate('/lab?demo=oria&mode=meeting')}
+            >
+              <motion.span className="flex items-center gap-3" whileHover={{ gap: 12 }}>
+                <span>🎭</span>
+                <span>Book a Demo with Oria</span>
                 <span>→</span>
               </motion.span>
             </Button>

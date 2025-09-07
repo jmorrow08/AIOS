@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logActivity } from '@/api/dashboard';
 
 export interface Company {
   id: string;
@@ -39,6 +40,18 @@ export const createCompany = async (companyData: CreateCompanyData): Promise<Com
         data: null,
         error: error.message || 'Failed to create company',
       };
+    }
+
+    // Log activity
+    try {
+      await logActivity(
+        `New client "${companyData.name}" was added to the system`,
+        'client',
+        '/operations-hub',
+        { client_id: data.id, client_name: companyData.name },
+      );
+    } catch (logError) {
+      console.warn('Failed to log client creation activity:', logError);
     }
 
     return {

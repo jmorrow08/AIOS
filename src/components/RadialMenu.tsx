@@ -9,6 +9,7 @@ const items = [
   { path: '/lab', label: 'AI Lab' },
   { path: '/media', label: 'Media Studio' },
   { path: '/library', label: 'Knowledge Library' },
+  { path: '/settings', label: '⚙️ Settings' },
 ];
 
 export const RadialMenu: React.FC = () => {

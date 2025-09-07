@@ -1,14 +1,16 @@
-# AI Agent Orchestrator
+# AI Agent Orchestrator (Multi-Tenant)
 
-This module provides a comprehensive system for managing and orchestrating AI agents with support for multiple LLM providers (OpenAI, Claude, Gemini) and agent delegation.
+This module provides a comprehensive system for managing and orchestrating AI agents in a multi-tenant environment, with support for multiple LLM providers (OpenAI, Claude, Gemini) and company-scoped agent delegation.
 
 ## Features
 
+- **Multi-Tenant Support**: Company-scoped agent configurations and interactions
 - **Multi-LLM Support**: Seamlessly switch between OpenAI, Claude (Anthropic), and Gemini
-- **Agent Configuration**: Store agent configurations in Supabase database
-- **Task Routing**: Route tasks to specific agents based on role
-- **Chief Agent Delegation**: Special handling for Chief agents that can delegate tasks
-- **Logging**: Automatic logging of all agent interactions
+- **Agent Configuration**: Store agent configurations in Supabase database with company isolation
+- **Task Routing**: Route tasks to specific agents based on role and company context
+- **Chief Agent Delegation**: Company-scoped agent delegation and task management
+- **Usage Tracking**: Monitor API usage and costs per company
+- **Logging**: Automatic logging of all agent interactions with company context
 - **Type Safety**: Full TypeScript support with proper type definitions
 
 ## Setup
@@ -25,17 +27,48 @@ VITE_GOOGLE_AI_API_KEY=your_google_ai_api_key
 
 ### 2. Database Setup
 
-Ensure your Supabase database has the `ai_agents` and `agent_logs` tables (included in the migration file).
+Ensure your Supabase database has the multi-tenant `ai_agents` and `agent_logs` tables with company isolation:
+
+```sql
+-- AI Agents table with company scoping
+CREATE TABLE ai_agents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  prompt TEXT,
+  api_key_ref TEXT,
+  llm_provider TEXT,
+  llm_model TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Agent Logs table with company scoping
+CREATE TABLE agent_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID REFERENCES ai_agents(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  input TEXT,
+  output TEXT,
+  tokens_used INTEGER,
+  cost DECIMAL(10,4),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
 
 ### 3. Agent Configuration
 
-Create agents in your database with the following fields:
+Create company-scoped agents in your database with the following fields:
 
 ```sql
-INSERT INTO ai_agents (name, role, prompt, llm_provider, llm_model, api_key_ref, status) VALUES
-('Sales Assistant', 'sales_support', 'You are a helpful sales assistant AI.', 'openai', 'gpt-4', 'VITE_OPENAI_API_KEY', 'active'),
-('Chief Strategist', 'chief', 'You are the Chief AI strategist who can delegate tasks.', 'claude', 'claude-3-sonnet-20240229', 'VITE_ANTHROPIC_API_KEY', 'active');
+-- Create agents for a specific company
+INSERT INTO ai_agents (company_id, name, role, prompt, llm_provider, llm_model, api_key_ref, status) VALUES
+('your-company-uuid', 'Sales Assistant', 'sales_support', 'You are a helpful sales assistant AI for our company.', 'openai', 'gpt-4', 'VITE_OPENAI_API_KEY', 'active'),
+('your-company-uuid', 'Chief Strategist', 'chief', 'You are the Chief AI strategist who can delegate tasks for our company.', 'claude', 'claude-3-sonnet-20240229', 'VITE_ANTHROPIC_API_KEY', 'active');
 ```
+
+**Note**: Each company can have its own set of agents with custom prompts and configurations.
 
 ## Usage
 
@@ -190,12 +223,39 @@ The system provides comprehensive error handling:
 
 All errors are logged to the `agent_logs` table for debugging.
 
+## Multi-Tenant Agent Management
+
+### Company Isolation
+
+- Agents are scoped to specific companies via `company_id`
+- Users can only access agents belonging to their company
+- Agent logs include company context for proper isolation
+- API usage is tracked per company for billing
+
+### Agent Administration
+
+- Admins can create company-specific agents
+- Clients can manage their own company's agents
+- Agent configurations can be customized per company
+- Usage limits are enforced per company
+
+### Usage Tracking
+
+- All agent interactions are logged with company context
+- API costs are tracked per company
+- Usage limits prevent budget overruns
+- Analytics available per company
+
 ## Security Notes
 
-- API keys should be stored as environment variables
-- The `dangerouslyAllowBrowser` flag is set for OpenAI (consider server-side implementation for production)
-- Row Level Security (RLS) policies are in place for database access control
-- Agent interactions are logged for audit purposes
+- **Company Isolation**: All agent operations respect company boundaries
+- **API Keys**: Stored as environment variables with proper access control
+- **Row Level Security**: RLS policies enforce company data isolation
+- **Audit Logging**: All agent interactions logged with company context
+- **Usage Limits**: Company-specific budget limits prevent abuse
+- **Access Control**: Users can only access their company's agents
+
+**Note**: The `dangerouslyAllowBrowser` flag is set for OpenAI (consider server-side implementation for production with enhanced security)
 
 ## Examples
 

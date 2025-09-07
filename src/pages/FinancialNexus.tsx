@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
 import { RadialMenu } from '@/components/RadialMenu';
 import { CosmicBackground } from '@/components/CosmicBackground';
+import InvoiceForm, { InvoiceFormData } from '@/components/InvoiceForm';
+import UsageBar from '@/components/UsageBar';
 
 // shadcn components
 import {
@@ -19,13 +21,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Recharts components
 import {
@@ -41,29 +43,56 @@ import {
 } from 'recharts';
 
 // Icons
-import { Plus, AlertTriangle, CreditCard, TrendingUp, DollarSign, Calendar } from 'lucide-react';
+import {
+  Plus,
+  AlertTriangle,
+  CreditCard,
+  TrendingUp,
+  DollarSign,
+  Calendar,
+  Receipt,
+  BarChart3,
+  Brain,
+  ExternalLink,
+} from 'lucide-react';
 
 // API imports
 import {
   getInvoices,
   createInvoice,
   markInvoicePaid,
+  getInvoiceStats,
   Invoice,
-  CreateInvoiceData,
+  LineItem,
 } from '@/api/invoices';
 import { getCompanies, Company } from '@/api/companies';
-import { getServices, Service } from '@/api/services';
-
-// Stripe
-import { loadStripe } from '@stripe/stripe-js';
-
-// Initialize Stripe (you'll need to add your publishable key to env)
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+import { getApiUsageSummary, checkBudgetLimit } from '@/api/apiUsage';
+import { generateAIForecast } from '@/api/forecast';
 
 interface RevenueData {
   month: string;
   revenue: number;
   invoices: number;
+}
+
+interface ApiUsageData {
+  service: string;
+  totalCost: number;
+  tokensUsed?: number;
+  imagesGenerated?: number;
+  requestsCount: number;
+}
+
+interface ForecastData {
+  revenueData: Array<{
+    month: string;
+    revenue: number;
+  }>;
+  trend: 'increasing' | 'decreasing' | 'stable';
+  averageMonthlyRevenue: number;
+  forecastNextMonth: number;
+  forecastConfidence: number;
+  insights: string[];
 }
 
 const FinancialNexus: React.FC = () => {
@@ -74,11 +103,32 @@ const FinancialNexus: React.FC = () => {
   const [invoicesLoading, setInvoicesLoading] = useState(true);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
 
-  // State for companies and services (admin view)
+  // State for invoice stats
+  const [invoiceStats, setInvoiceStats] = useState({
+    totalUnpaid: 0,
+    totalOverdue: 0,
+    totalPaidThisMonth: 0,
+    totalOutstanding: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // State for companies
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(false);
-  const [servicesLoading, setServicesLoading] = useState(false);
+
+  // State for API usage
+  const [apiUsage, setApiUsage] = useState<ApiUsageData[]>([]);
+  const [apiUsageLoading, setApiUsageLoading] = useState(true);
+  const [budgetInfo, setBudgetInfo] = useState({
+    currentUsage: 0,
+    budgetLimit: 50, // Default budget
+    isWithinBudget: true,
+    projectedUsage: 0,
+  });
+
+  // State for forecast
+  const [forecast, setForecast] = useState<ForecastData | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
 
   // State for revenue chart
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
@@ -86,73 +136,68 @@ const FinancialNexus: React.FC = () => {
 
   // UI state
   const [newInvoiceDialogOpen, setNewInvoiceDialogOpen] = useState(false);
-
-  // Form states
-  const [invoiceForm, setInvoiceForm] = useState({
-    company_id: '',
-    service_id: '',
-    amount: '',
-    due_date: '',
-  });
+  const [invoiceFormLoading, setInvoiceFormLoading] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   // Load data on mount
   useEffect(() => {
-    if (role === 'admin') {
-      loadAdminData();
-    } else if (role === 'client' && companyId) {
-      loadClientInvoices();
-    }
+    loadAllData();
   }, [role, companyId]);
 
-  const loadAdminData = async () => {
+  const loadAllData = async () => {
     setInvoicesLoading(true);
-    setCompaniesLoading(true);
+    setStatsLoading(true);
+    setApiUsageLoading(true);
     setChartLoading(true);
 
     try {
       // Load all data in parallel
-      const [invoicesRes, companiesRes] = await Promise.all([getInvoices(), getCompanies()]);
+      const [invoicesRes, statsRes, companiesRes, apiUsageRes, budgetRes] =
+        await Promise.allSettled([
+          getInvoices(role === 'client' ? companyId : undefined),
+          getInvoiceStats(role === 'client' ? companyId : undefined),
+          role === 'admin' ? getCompanies() : Promise.resolve({ data: [], error: null }),
+          getApiUsageSummary(),
+          checkBudgetLimit(),
+        ]);
 
       // Handle invoices
-      if (invoicesRes.error) {
-        setInvoicesError(invoicesRes.error);
-      } else if (invoicesRes.data) {
-        const invoiceData = invoicesRes.data as Invoice[];
+      if (invoicesRes.status === 'fulfilled' && invoicesRes.value.data) {
+        const invoiceData = invoicesRes.value.data as Invoice[];
         setInvoices(invoiceData);
         processRevenueData(invoiceData);
+      } else if (invoicesRes.status === 'rejected') {
+        setInvoicesError('Failed to load invoices');
+      }
+
+      // Handle invoice stats
+      if (statsRes.status === 'fulfilled' && statsRes.value.data) {
+        setInvoiceStats(statsRes.value.data);
       }
 
       // Handle companies
-      if (companiesRes.error) {
-        console.error('Error loading companies:', companiesRes.error);
-      } else if (companiesRes.data) {
-        setCompanies(companiesRes.data as Company[]);
+      if (companiesRes.status === 'fulfilled' && companiesRes.value.data) {
+        setCompanies(companiesRes.value.data as Company[]);
+      }
+
+      // Handle API usage
+      if (apiUsageRes.status === 'fulfilled' && apiUsageRes.value.data) {
+        setApiUsage(apiUsageRes.value.data as ApiUsageData[]);
+      }
+
+      // Handle budget info
+      if (budgetRes.status === 'fulfilled' && budgetRes.value.data) {
+        setBudgetInfo(budgetRes.value.data);
       }
     } catch (error) {
-      console.error('Error loading admin data:', error);
+      console.error('Error loading data:', error);
       setInvoicesError('Failed to load financial data');
     }
 
     setInvoicesLoading(false);
-    setCompaniesLoading(false);
+    setStatsLoading(false);
+    setApiUsageLoading(false);
     setChartLoading(false);
-  };
-
-  const loadClientInvoices = async () => {
-    if (!companyId) return;
-
-    setInvoicesLoading(true);
-    setInvoicesError(null);
-
-    const { data, error } = await getInvoices(companyId);
-
-    if (error) {
-      setInvoicesError(error);
-    } else if (data) {
-      setInvoices(data as Invoice[]);
-    }
-
-    setInvoicesLoading(false);
   };
 
   const processRevenueData = (invoiceData: Invoice[]) => {
@@ -162,7 +207,6 @@ const FinancialNexus: React.FC = () => {
       if (invoice.status === 'paid' && invoice.paid_date) {
         const date = new Date(invoice.paid_date);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
         if (!monthlyData[monthKey]) {
           monthlyData[monthKey] = { revenue: 0, count: 0 };
@@ -180,56 +224,59 @@ const FinancialNexus: React.FC = () => {
         invoices: data.count,
       }))
       .sort((a, b) => a.month.localeCompare(b.month))
-      .slice(-12); // Last 12 months
+      .slice(-6); // Last 6 months for forecast compatibility
 
     setRevenueData(chartData);
   };
 
-  const handleCreateInvoice = async () => {
-    if (
-      !invoiceForm.company_id ||
-      !invoiceForm.service_id ||
-      !invoiceForm.amount ||
-      !invoiceForm.due_date
-    ) {
-      return;
-    }
+  const handleCreateInvoice = async (formData: InvoiceFormData) => {
+    setInvoiceFormLoading(true);
 
-    const invoiceData: CreateInvoiceData = {
-      company_id: invoiceForm.company_id,
-      service_id: invoiceForm.service_id,
-      amount: parseFloat(invoiceForm.amount),
-      due_date: invoiceForm.due_date,
-    };
+    try {
+      // Convert form data to API format
+      const invoiceData = {
+        company_id: formData.clientId,
+        amount: formData.lineItems.reduce((sum, item) => sum + item.amount, 0),
+        due_date: formData.dueDate,
+        line_items: formData.lineItems,
+      };
 
-    const { data, error } = await createInvoice(
-      invoiceData.company_id,
-      invoiceData.service_id,
-      invoiceData.amount,
-      invoiceData.due_date,
-    );
+      const { data, error } = await createInvoice(invoiceData);
 
-    if (!error && data) {
-      setInvoices((prev) => [data as Invoice, ...prev]);
-      setInvoiceForm({ company_id: '', service_id: '', amount: '', due_date: '' });
-      setNewInvoiceDialogOpen(false);
-      // Re-process revenue data
-      processRevenueData([data as Invoice, ...invoices]);
+      if (!error && data) {
+        setInvoices((prev) => [data as Invoice, ...prev]);
+        // Refresh stats and chart data
+        const statsRes = await getInvoiceStats(role === 'client' ? companyId : undefined);
+        if (statsRes.data) {
+          setInvoiceStats(statsRes.data);
+        }
+        processRevenueData([data as Invoice, ...invoices]);
+      } else {
+        throw new Error(error || 'Failed to create invoice');
+      }
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      throw error;
+    } finally {
+      setInvoiceFormLoading(false);
     }
   };
 
-  const handleCompanyChange = async (companyId: string) => {
-    setInvoiceForm((prev) => ({ ...prev, company_id: companyId, service_id: '' }));
-
-    if (companyId) {
-      setServicesLoading(true);
-      const { data, error } = await getServices(companyId);
-      if (!error && data) {
-        setServices(data as Service[]);
+  const handleGenerateForecast = async () => {
+    setForecastLoading(true);
+    try {
+      const { data, error } = await generateAIForecast();
+      if (error) {
+        console.error('Error generating forecast:', error);
+        alert('Failed to generate forecast. Please try again.');
+      } else if (data) {
+        setForecast(data);
       }
-      setServicesLoading(false);
-    } else {
-      setServices([]);
+    } catch (error) {
+      console.error('Error generating forecast:', error);
+      alert('Failed to generate forecast. Please try again.');
+    } finally {
+      setForecastLoading(false);
     }
   };
 
@@ -237,13 +284,19 @@ const FinancialNexus: React.FC = () => {
     if (!invoice.id) return;
 
     try {
-      // For demo purposes, we'll just mark as paid
-      // In production, this would integrate with Stripe Checkout
       const { data, error } = await markInvoicePaid(invoice.id);
 
       if (!error && data) {
         setInvoices((prev) => prev.map((inv) => (inv.id === invoice.id ? (data as Invoice) : inv)));
-        alert(`Invoice ${invoice.id} marked as paid!`);
+        // Refresh stats
+        const statsRes = await getInvoiceStats(role === 'client' ? companyId : undefined);
+        if (statsRes.data) {
+          setInvoiceStats(statsRes.data);
+        }
+        processRevenueData([data as Invoice, ...invoices.filter((inv) => inv.id !== invoice.id)]);
+        alert(`Invoice marked as paid!`);
+      } else {
+        throw new Error(error || 'Failed to mark invoice as paid');
       }
     } catch (error) {
       console.error('Error processing payment:', error);
@@ -251,7 +304,15 @@ const FinancialNexus: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, dueDate?: string) => {
+    const now = new Date();
+    const due = dueDate ? new Date(dueDate) : null;
+    const isOverdue = due && due < now && status === 'pending';
+
+    if (isOverdue) {
+      return 'bg-red-500/20 text-red-300 border border-red-500/30';
+    }
+
     switch (status) {
       case 'paid':
         return 'bg-green-500/20 text-green-300';
@@ -264,401 +325,425 @@ const FinancialNexus: React.FC = () => {
     }
   };
 
-  // Admin View Component
-  const AdminView = () => (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white">Financial Nexus</h2>
-        <Dialog open={newInvoiceDialogOpen} onOpenChange={setNewInvoiceDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-cosmic-blue hover:bg-cosmic-blue/80">
-              <Plus className="w-4 h-4 mr-2" />
-              New Invoice
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-gray-900 border-gray-700 max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-white">Create New Invoice</DialogTitle>
-              <DialogDescription className="text-gray-400">
-                Generate an invoice for a company service.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="invoice-company" className="text-white">
-                  Company *
-                </Label>
-                <select
-                  id="invoice-company"
-                  value={invoiceForm.company_id}
-                  onChange={(e) => handleCompanyChange(e.target.value)}
-                  className="w-full p-2 bg-gray-800 border border-gray-600 text-white rounded"
-                >
-                  <option value="">Select a company</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="invoice-service" className="text-white">
-                  Service *
-                </Label>
-                <select
-                  id="invoice-service"
-                  value={invoiceForm.service_id}
-                  onChange={(e) =>
-                    setInvoiceForm((prev) => ({ ...prev, service_id: e.target.value }))
-                  }
-                  className="w-full p-2 bg-gray-800 border border-gray-600 text-white rounded"
-                  disabled={servicesLoading}
-                >
-                  <option value="">
-                    {servicesLoading ? 'Loading services...' : 'Select a service'}
-                  </option>
-                  {services.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name} - ${service.price}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="invoice-amount" className="text-white">
-                    Amount ($)
-                  </Label>
-                  <Input
-                    id="invoice-amount"
-                    type="number"
-                    step="0.01"
-                    value={invoiceForm.amount}
-                    onChange={(e) =>
-                      setInvoiceForm((prev) => ({ ...prev, amount: e.target.value }))
-                    }
-                    placeholder="0.00"
-                    className="bg-gray-800 border-gray-600 text-white"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="invoice-due-date" className="text-white">
-                    Due Date
-                  </Label>
-                  <Input
-                    id="invoice-due-date"
-                    type="date"
-                    value={invoiceForm.due_date}
-                    onChange={(e) =>
-                      setInvoiceForm((prev) => ({ ...prev, due_date: e.target.value }))
-                    }
-                    className="bg-gray-800 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={handleCreateInvoice}
-                disabled={
-                  !invoiceForm.company_id ||
-                  !invoiceForm.service_id ||
-                  !invoiceForm.amount ||
-                  !invoiceForm.due_date
-                }
-                className="bg-cosmic-blue hover:bg-cosmic-blue/80"
-              >
-                Create Invoice
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+  const getStatusText = (status: string, dueDate?: string) => {
+    const now = new Date();
+    const due = dueDate ? new Date(dueDate) : null;
+    const isOverdue = due && due < now && status === 'pending';
 
-      {/* Revenue Chart */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Revenue Overview</h3>
-        {chartLoading ? (
-          <div className="h-64 flex items-center justify-center">
-            <Skeleton className="h-64 w-full" />
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis
-                dataKey="month"
-                stroke="#9CA3AF"
-                fontSize={12}
-                tickFormatter={(value) => {
-                  const date = new Date(value + '-01');
-                  return date.toLocaleDateString('en-US', { month: 'short' });
-                }}
-              />
-              <YAxis
-                stroke="#9CA3AF"
-                fontSize={12}
-                tickFormatter={(value) => `$${value.toLocaleString()}`}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1F2937',
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                }}
-                labelFormatter={(value) => {
-                  const date = new Date(value + '-01');
-                  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                }}
-                formatter={(value: number, name: string) => [
-                  name === 'revenue' ? `$${value.toLocaleString()}` : value,
-                  name === 'revenue' ? 'Revenue' : 'Invoices',
-                ]}
-              />
-              <Line
-                type="monotone"
-                dataKey="revenue"
-                stroke="#3B82F6"
-                strokeWidth={3}
-                dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+    if (isOverdue) return 'Overdue';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
 
-      {/* Invoices Table */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 overflow-hidden">
-        <div className="p-6 border-b border-white/20">
-          <h3 className="text-xl font-semibold text-white">All Invoices</h3>
-        </div>
-        {invoicesLoading ? (
-          <div className="p-6 space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center space-x-4">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-16" />
-              </div>
-            ))}
-          </div>
-        ) : invoicesError ? (
-          <Alert className="m-6 bg-red-900/20 border-red-500/50">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle className="text-red-200">Error Loading Invoices</AlertTitle>
-            <AlertDescription className="text-red-300">{invoicesError}</AlertDescription>
-          </Alert>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="border-white/20 hover:bg-white/5">
-                <TableHead className="text-white">Invoice ID</TableHead>
-                <TableHead className="text-white">Company</TableHead>
-                <TableHead className="text-white">Service</TableHead>
-                <TableHead className="text-white">Amount</TableHead>
-                <TableHead className="text-white">Due Date</TableHead>
-                <TableHead className="text-white">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.map((invoice) => {
-                const company = companies.find((c) => c.id === invoice.company_id);
-                return (
-                  <TableRow key={invoice.id} className="border-white/20 hover:bg-white/5">
-                    <TableCell className="text-white font-mono text-sm">
-                      {invoice.id.slice(0, 8)}...
-                    </TableCell>
-                    <TableCell className="text-white">
-                      {company?.name || 'Unknown Company'}
-                    </TableCell>
-                    <TableCell className="text-white">
-                      Service {invoice.service_id.slice(0, 8)}...
-                    </TableCell>
-                    <TableCell className="text-white font-semibold">
-                      ${invoice.amount.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-cosmic-blue">
-                      {new Date(invoice.due_date).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${getStatusBadge(
-                          invoice.status,
-                        )}`}
-                      >
-                        {invoice.status}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
-  );
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
 
-  // Client View Component
-  const ClientView = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white">Financial Overview</h2>
-        <p className="text-cosmic-blue">Manage your invoices and payments</p>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
-          <div className="flex items-center space-x-3">
-            <DollarSign className="w-8 h-8 text-green-400" />
-            <div>
-              <p className="text-cosmic-blue text-sm">Total Paid</p>
-              <p className="text-white text-2xl font-bold">
-                $
-                {invoices
-                  .filter((inv) => inv.status === 'paid')
-                  .reduce((sum, inv) => sum + inv.amount, 0)
-                  .toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
-          <div className="flex items-center space-x-3">
-            <CreditCard className="w-8 h-8 text-yellow-400" />
-            <div>
-              <p className="text-cosmic-blue text-sm">Pending</p>
-              <p className="text-white text-2xl font-bold">
-                $
-                {invoices
-                  .filter((inv) => inv.status === 'pending')
-                  .reduce((sum, inv) => sum + inv.amount, 0)
-                  .toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
-          <div className="flex items-center space-x-3">
-            <Calendar className="w-8 h-8 text-red-400" />
-            <div>
-              <p className="text-cosmic-blue text-sm">Overdue</p>
-              <p className="text-white text-2xl font-bold">
-                $
-                {invoices
-                  .filter((inv) => inv.status === 'overdue')
-                  .reduce((sum, inv) => sum + inv.amount, 0)
-                  .toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Invoices List */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Your Invoices</h3>
-        {invoicesLoading ? (
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="p-4 bg-white/5 rounded-lg space-y-2">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-64" />
-                <Skeleton className="h-8 w-24" />
-              </div>
-            ))}
-          </div>
-        ) : invoicesError ? (
-          <Alert className="bg-red-900/20 border-red-500/50">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle className="text-red-200">Error Loading Invoices</AlertTitle>
-            <AlertDescription className="text-red-300">{invoicesError}</AlertDescription>
-          </Alert>
-        ) : invoices.length > 0 ? (
-          <div className="space-y-4">
-            {invoices.map((invoice) => (
-              <div key={invoice.id} className="p-4 bg-white/5 rounded-lg border border-white/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-4 mb-2">
-                      <h4 className="text-white font-medium">
-                        Invoice #{invoice.id.slice(0, 8)}...
-                      </h4>
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${getStatusBadge(
-                          invoice.status,
-                        )}`}
-                      >
-                        {invoice.status}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-cosmic-blue">Amount</p>
-                        <p className="text-white font-semibold">
-                          ${invoice.amount.toLocaleString()}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-cosmic-blue">Due Date</p>
-                        <p className="text-white">
-                          {new Date(invoice.due_date).toLocaleDateString()}
-                        </p>
-                      </div>
-                      {invoice.paid_date && (
-                        <div>
-                          <p className="text-cosmic-blue">Paid Date</p>
-                          <p className="text-white">
-                            {new Date(invoice.paid_date).toLocaleDateString()}
-                          </p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-cosmic-blue">Service</p>
-                        <p className="text-white">Service {invoice.service_id.slice(0, 8)}...</p>
-                      </div>
-                    </div>
-                  </div>
-                  {invoice.status !== 'paid' && (
-                    <Button
-                      onClick={() => handlePayInvoice(invoice)}
-                      className="bg-cosmic-blue hover:bg-cosmic-blue/80 ml-4"
-                    >
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Pay Now
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <DollarSign className="w-12 h-12 text-cosmic-blue mx-auto mb-4" />
-            <h3 className="text-white font-medium mb-2">No Invoices Yet</h3>
-            <p className="text-cosmic-blue">Your invoices will appear here.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
+  // Main Component
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* cosmic background */}
       <CosmicBackground />
       {/* radial menu */}
       <RadialMenu />
+
       {/* main content */}
       <div className="p-8 pt-24 max-w-7xl mx-auto">
-        {role === 'admin' ? <AdminView /> : <ClientView />}
+        <div className="space-y-8">
+          {/* Header */}
+          <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold text-white">Financial Nexus</h1>
+            {role === 'admin' && (
+              <Button
+                onClick={() => setNewInvoiceDialogOpen(true)}
+                className="bg-cosmic-blue hover:bg-cosmic-blue/80"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Invoice
+              </Button>
+            )}
+          </div>
+
+          {/* Financial Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
+              <div className="flex items-center space-x-3">
+                <DollarSign className="w-8 h-8 text-green-400" />
+                <div>
+                  <p className="text-cosmic-blue text-sm">Total Paid (This Month)</p>
+                  <p className="text-white text-2xl font-bold">
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-24" />
+                    ) : (
+                      formatCurrency(invoiceStats.totalPaidThisMonth)
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
+              <div className="flex items-center space-x-3">
+                <CreditCard className="w-8 h-8 text-yellow-400" />
+                <div>
+                  <p className="text-cosmic-blue text-sm">Outstanding</p>
+                  <p className="text-white text-2xl font-bold">
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-24" />
+                    ) : (
+                      formatCurrency(invoiceStats.totalOutstanding)
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
+              <div className="flex items-center space-x-3">
+                <Calendar className="w-8 h-8 text-orange-400" />
+                <div>
+                  <p className="text-cosmic-blue text-sm">Unpaid</p>
+                  <p className="text-white text-2xl font-bold">
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-24" />
+                    ) : (
+                      formatCurrency(invoiceStats.totalUnpaid)
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
+              <div className="flex items-center space-x-3">
+                <AlertTriangle className="w-8 h-8 text-red-400" />
+                <div>
+                  <p className="text-cosmic-blue text-sm">Overdue</p>
+                  <p className="text-white text-2xl font-bold">
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-24" />
+                    ) : (
+                      formatCurrency(invoiceStats.totalOverdue)
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content Tabs */}
+          <Tabs defaultValue="invoices" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-gray-800/50">
+              <TabsTrigger value="invoices" className="flex items-center space-x-2">
+                <Receipt className="w-4 h-4" />
+                <span>💵 Invoices & Payments</span>
+              </TabsTrigger>
+              <TabsTrigger value="usage" className="flex items-center space-x-2">
+                <BarChart3 className="w-4 h-4" />
+                <span>📊 API Usage & Budget</span>
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Invoices Tab */}
+            <TabsContent value="invoices" className="space-y-6">
+              {/* Revenue Chart */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-white">Revenue Overview</h3>
+                  <Button
+                    onClick={handleGenerateForecast}
+                    disabled={forecastLoading}
+                    variant="outline"
+                    size="sm"
+                    className="bg-gray-800 border-gray-600 text-white hover:bg-gray-700"
+                  >
+                    <Brain className="w-4 h-4 mr-2" />
+                    {forecastLoading ? 'Generating...' : 'AI Forecast'}
+                  </Button>
+                </div>
+
+                {chartLoading ? (
+                  <div className="h-64 flex items-center justify-center">
+                    <Skeleton className="h-64 w-full" />
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={revenueData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis
+                        dataKey="month"
+                        stroke="#9CA3AF"
+                        fontSize={12}
+                        tickFormatter={(value) => {
+                          const date = new Date(value + '-01');
+                          return date.toLocaleDateString('en-US', { month: 'short' });
+                        }}
+                      />
+                      <YAxis
+                        stroke="#9CA3AF"
+                        fontSize={12}
+                        tickFormatter={(value) => `$${value.toLocaleString()}`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1F2937',
+                          border: '1px solid #374151',
+                          borderRadius: '8px',
+                        }}
+                        labelFormatter={(value) => {
+                          const date = new Date(value + '-01');
+                          return date.toLocaleDateString('en-US', {
+                            month: 'long',
+                            year: 'numeric',
+                          });
+                        }}
+                        formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#3B82F6"
+                        strokeWidth={3}
+                        dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+
+                {/* Forecast Display */}
+                {forecast && (
+                  <div className="mt-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                    <h4 className="text-white font-semibold mb-3 flex items-center">
+                      <TrendingUp className="w-5 h-5 mr-2" />
+                      AI Revenue Forecast
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="text-center">
+                        <p className="text-cosmic-blue text-sm">Next Month</p>
+                        <p className="text-white text-xl font-bold">
+                          {formatCurrency(forecast.forecastNextMonth)}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-cosmic-blue text-sm">Trend</p>
+                        <p
+                          className={`text-lg font-bold ${
+                            forecast.trend === 'increasing'
+                              ? 'text-green-400'
+                              : forecast.trend === 'decreasing'
+                              ? 'text-red-400'
+                              : 'text-yellow-400'
+                          }`}
+                        >
+                          {forecast.trend.charAt(0).toUpperCase() + forecast.trend.slice(1)}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-cosmic-blue text-sm">Confidence</p>
+                        <p className="text-white text-xl font-bold">
+                          {forecast.forecastConfidence.toFixed(0)}%
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {forecast.insights.slice(0, 3).map((insight, index) => (
+                        <p key={index} className="text-gray-300 text-sm">
+                          • {insight}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Invoices Table */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 overflow-hidden">
+                <div className="p-6 border-b border-white/20">
+                  <h3 className="text-xl font-semibold text-white">Invoices</h3>
+                </div>
+
+                {invoicesLoading ? (
+                  <div className="p-6">
+                    <div className="space-y-4">
+                      {[...Array(5)].map((_, i) => (
+                        <div key={i} className="flex items-center space-x-4">
+                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-4 w-20" />
+                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className="h-4 w-16" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : invoicesError ? (
+                  <Alert className="m-6 bg-red-900/20 border-red-500/50">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle className="text-red-200">Error Loading Invoices</AlertTitle>
+                    <AlertDescription className="text-red-300">{invoicesError}</AlertDescription>
+                  </Alert>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/20 hover:bg-white/5">
+                        <TableHead className="text-white">Invoice ID</TableHead>
+                        {role === 'admin' && <TableHead className="text-white">Client</TableHead>}
+                        <TableHead className="text-white">Date</TableHead>
+                        <TableHead className="text-white">Amount</TableHead>
+                        <TableHead className="text-white">Due Date</TableHead>
+                        <TableHead className="text-white">Status</TableHead>
+                        <TableHead className="text-white">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {invoices.map((invoice) => {
+                        const company = companies.find((c) => c.id === invoice.company_id);
+                        return (
+                          <TableRow key={invoice.id} className="border-white/20 hover:bg-white/5">
+                            <TableCell className="text-white font-mono text-sm">
+                              {invoice.id.slice(0, 8)}...
+                            </TableCell>
+                            {role === 'admin' && (
+                              <TableCell className="text-white">
+                                {company?.name || 'Unknown Client'}
+                              </TableCell>
+                            )}
+                            <TableCell className="text-white">
+                              {new Date(invoice.created_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="text-white font-semibold">
+                              {formatCurrency(invoice.amount)}
+                            </TableCell>
+                            <TableCell className="text-cosmic-blue">
+                              {new Date(invoice.due_date).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-medium ${getStatusBadge(
+                                  invoice.status,
+                                  invoice.due_date,
+                                )}`}
+                              >
+                                {getStatusText(invoice.status, invoice.due_date)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {invoice.status !== 'paid' && (
+                                <Button
+                                  onClick={() => handlePayInvoice(invoice)}
+                                  size="sm"
+                                  className="bg-cosmic-blue hover:bg-cosmic-blue/80"
+                                >
+                                  <CreditCard className="w-4 h-4 mr-2" />
+                                  Mark Paid
+                                </Button>
+                              )}
+                              {invoice.payment_link && (
+                                <Button
+                                  onClick={() => window.open(invoice.payment_link, '_blank')}
+                                  size="sm"
+                                  variant="outline"
+                                  className="ml-2"
+                                >
+                                  <ExternalLink className="w-4 h-4 mr-2" />
+                                  Pay Now
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* API Usage Tab */}
+            <TabsContent value="usage" className="space-y-6">
+              {/* Budget Overview */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-6">
+                <h3 className="text-xl font-semibold text-white mb-4">API Budget Overview</h3>
+                <UsageBar
+                  currentUsage={budgetInfo.currentUsage}
+                  budgetLimit={budgetInfo.budgetLimit}
+                  title="Monthly API Budget"
+                />
+              </div>
+
+              {/* API Usage Breakdown */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 overflow-hidden">
+                <div className="p-6 border-b border-white/20">
+                  <h3 className="text-xl font-semibold text-white">API Usage Breakdown</h3>
+                </div>
+
+                {apiUsageLoading ? (
+                  <div className="p-6">
+                    <div className="space-y-4">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="flex items-center space-x-4">
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-4 w-20" />
+                          <Skeleton className="h-4 w-24" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/20 hover:bg-white/5">
+                        <TableHead className="text-white">Service</TableHead>
+                        <TableHead className="text-white">Requests</TableHead>
+                        <TableHead className="text-white">Tokens/Images</TableHead>
+                        <TableHead className="text-white">Cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {apiUsage.map((usage) => (
+                        <TableRow key={usage.service} className="border-white/20 hover:bg-white/5">
+                          <TableCell className="text-white font-medium">{usage.service}</TableCell>
+                          <TableCell className="text-white">
+                            {usage.requestsCount.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-white">
+                            {usage.tokensUsed
+                              ? `${usage.tokensUsed.toLocaleString()} tokens`
+                              : usage.imagesGenerated
+                              ? `${usage.imagesGenerated} images`
+                              : 'N/A'}
+                          </TableCell>
+                          <TableCell className="text-white font-semibold">
+                            {formatCurrency(usage.totalCost)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {apiUsage.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-gray-400 py-8">
+                            No API usage data available for this month
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* Invoice Form Dialog */}
+          {role === 'admin' && (
+            <InvoiceForm
+              isOpen={newInvoiceDialogOpen}
+              onClose={() => setNewInvoiceDialogOpen(false)}
+              onSubmit={handleCreateInvoice}
+              clients={companies.map((c) => ({ id: c.id, name: c.name }))}
+              loading={invoiceFormLoading}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

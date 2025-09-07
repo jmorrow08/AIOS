@@ -1,5 +1,17 @@
 import OpenAI from 'openai';
 import { supabase } from '@/lib/supabaseClient';
+import {
+  costCalculators,
+  checkBudgetBeforeAction,
+  logApiUsageAndUpdateBudget,
+} from '@/api/apiUsage';
+
+export interface RAGOptions {
+  agentId?: string;
+  agentName?: string;
+  skipBudgetCheck?: boolean;
+  skipUsageLogging?: boolean;
+}
 
 export interface VectorSearchResult {
   id: string;
@@ -22,15 +34,45 @@ export interface QueryKnowledgeResponse {
 }
 
 /**
- * Query knowledge base using vector similarity search
+ * Query knowledge base using vector similarity search with budget checking and usage logging
  */
 export const queryKnowledge = async (
   query: string,
   agentId?: string,
+  options: RAGOptions = {},
 ): Promise<QueryKnowledgeResponse> => {
   try {
+    // Estimate embedding cost for budget check
+    const estimatedTokens = Math.ceil(query.length / 4); // Rough estimate
+    const costCalc = costCalculators.openai.embeddings(estimatedTokens);
+
+    // Check budget before proceeding
+    if (!options.skipBudgetCheck) {
+      const budgetCheck = await checkBudgetBeforeAction(
+        'OpenAI',
+        costCalc.cost,
+        options.agentId || agentId,
+      );
+      if (budgetCheck.error) {
+        return {
+          success: false,
+          results: [],
+          error: `Budget check failed: ${budgetCheck.error}`,
+        };
+      }
+      if (!budgetCheck.data?.can_proceed) {
+        return {
+          success: false,
+          results: [],
+          error: `Budget exceeded. Current spend: $${budgetCheck.data?.current_spend?.toFixed(
+            2,
+          )}, Limit: $${budgetCheck.data?.budget_limit?.toFixed(2)}`,
+        };
+      }
+    }
+
     // Step 1: Generate embedding for the query
-    const embeddingResponse = await generateQueryEmbedding(query);
+    const embeddingResponse = await generateQueryEmbedding(query, options);
     if (!embeddingResponse.success) {
       return {
         success: false,
@@ -71,10 +113,11 @@ export const queryKnowledge = async (
 };
 
 /**
- * Generate embedding for query using OpenAI
+ * Generate embedding for query using OpenAI with usage logging
  */
 const generateQueryEmbedding = async (
   query: string,
+  options: RAGOptions = {},
 ): Promise<{
   success: boolean;
   embedding?: number[];
@@ -105,6 +148,27 @@ const generateQueryEmbedding = async (
         success: false,
         error: 'No embedding generated',
       };
+    }
+
+    // Calculate actual token usage and log it
+    const actualTokens = response.usage?.prompt_tokens || Math.ceil(query.length / 4);
+    const costCalc = costCalculators.openai.embeddings(actualTokens);
+
+    // Log usage if not skipped
+    if (!options.skipUsageLogging) {
+      await logApiUsageAndUpdateBudget({
+        service: 'OpenAI',
+        agent_id: options.agentId,
+        agent: options.agentName,
+        description: 'RAG embedding generation',
+        cost: costCalc.cost,
+        tokens_used: actualTokens,
+        metadata: {
+          model: 'text-embedding-3-small',
+          query_length: query.length,
+          operation: 'embedding_generation',
+        },
+      });
     }
 
     return {
@@ -180,7 +244,7 @@ const searchVectorIndex = async (
 };
 
 /**
- * Add document to vector index (for ingestion pipeline)
+ * Add document to vector index (for ingestion pipeline) with usage logging
  */
 export const addDocumentToIndex = async (
   content: string,
@@ -192,10 +256,14 @@ export const addDocumentToIndex = async (
   },
   chunkIndex?: number,
   totalChunks?: number,
+  options: RAGOptions = {},
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     // Generate embedding for the content
-    const embeddingResponse = await generateQueryEmbedding(content);
+    const embeddingResponse = await generateQueryEmbedding(content, {
+      ...options,
+      skipBudgetCheck: true,
+    }); // Skip budget check for ingestion
     if (!embeddingResponse.success) {
       return {
         success: false,
@@ -235,7 +303,7 @@ export const addDocumentToIndex = async (
 };
 
 /**
- * Batch add documents to vector index
+ * Batch add documents to vector index with usage logging
  */
 export const batchAddDocumentsToIndex = async (
   documents: Array<{
@@ -249,6 +317,7 @@ export const batchAddDocumentsToIndex = async (
     chunkIndex?: number;
     totalChunks?: number;
   }>,
+  options: RAGOptions = {},
 ): Promise<{ success: boolean; processed: number; errors: string[] }> => {
   const errors: string[] = [];
   let processed = 0;
@@ -260,6 +329,7 @@ export const batchAddDocumentsToIndex = async (
         doc.metadata,
         doc.chunkIndex,
         doc.totalChunks,
+        options,
       );
 
       if (result.success) {

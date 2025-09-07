@@ -1,6 +1,6 @@
 # AI OS Supabase Shell
 
-A comprehensive **React + Vite** application for AI Business Systems OS, built with **Supabase** for authentication, database, and storage. This modular platform includes AI agent orchestration, media generation, webhook automation, and business management tools.
+A comprehensive **Multi-Tenant React + Vite** application for AI Business Systems OS, built with **Supabase** for authentication, database, and storage. This enterprise-grade platform features complete **Stripe billing integration**, company-specific data isolation, AI agent orchestration, media generation, webhook automation, and advanced business management tools.
 
 ## 🚀 Features
 
@@ -23,13 +23,20 @@ A comprehensive **React + Vite** application for AI Business Systems OS, built w
 - **Webhook Automation**: Zapier and Tasker integration
 - **Vector Search**: RAG implementation for document search
 
+### Multi-Tenant Architecture
+
+- **Company Isolation**: Complete data separation between clients
+- **Row Level Security**: PostgreSQL RLS policies for secure access
+- **Company-Specific Billing**: Individual usage tracking and limits
+- **Stripe Customer Portal**: Self-service billing management
+
 ### Business Tools
 
-- **Client Management**: Company profiles and contact management
+- **Client Management**: Multi-company support with admin oversight
 - **Invoice System**: Automated invoicing with Stripe integration
-- **Job Management**: Task creation and tracking
-- **Document Management**: File upload and organization
-- **Payment Processing**: Stripe webhook integration
+- **Job Management**: Company-scoped task creation and tracking
+- **Document Management**: Company-specific file organization
+- **Payment Processing**: Complete Stripe billing workflow
 
 ## 🛠️ Getting Started
 
@@ -65,9 +72,11 @@ VITE_ZAPIER_API_KEY=your_zapier_api_key
 VITE_TASKER_WEBHOOK_URL=https://your-tasker-webhook-url
 VITE_TASKER_API_KEY=your_tasker_api_key
 
-# Stripe Configuration (Optional - for payments)
+# Stripe Configuration (Required for billing)
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PORTAL_CONFIG_ID=... # From Stripe Customer Portal settings
 ```
 
 ### 3. Database Setup
@@ -78,19 +87,21 @@ Run the setup script to create all required tables:
 npm run setup-db
 ```
 
-This creates the following tables:
+This creates the following multi-tenant tables:
 
 - `public.profiles` - User profiles and authentication
-- `public.companies` - Client/company management
-- `public.services` - Service offerings and billing
-- `public.invoices` - Invoice and payment tracking
-- `public.jobs` - Task and job management
-- `public.documents` - Document storage and metadata
-- `public.media_assets` - AI-generated media storage
-- `public.company_config` - System configuration settings
+- `public.companies` - Client/company management with Stripe customer IDs
+- `public.services` - Company-scoped service offerings and billing
+- `public.invoices` - Company-specific invoice and payment tracking
+- `public.jobs` - Company-scoped task and job management
+- `public.documents` - Company-specific document storage and metadata
+- `public.media_assets` - Company-scoped AI-generated media storage
+- `public.company_config` - Company-specific configuration settings
+- `public.company_plans` - Billing plans and usage limits per company
 - `public.settings` - Application settings
-- `public.ai_agents` - AI agent configurations
-- `public.agent_logs` - AI interaction logging
+- `public.ai_agents` - Company-scoped AI agent configurations
+- `public.agent_logs` - Company-specific AI interaction logging
+- `public.api_usage` - Company-specific API usage tracking
 
 ### 4. Supabase Configuration
 
@@ -107,7 +118,17 @@ This creates the following tables:
    node setup_auth.js
    ```
 
-3. **Configure Vector Search (Optional):**
+3. **Deploy Edge Functions:**
+
+   ```bash
+   # Deploy Stripe integration functions
+   supabase functions deploy stripe-webhook
+   supabase functions deploy create-checkout-session
+   supabase functions deploy create-stripe-customer
+   supabase functions deploy create-customer-portal-session
+   ```
+
+4. **Configure Vector Search (Optional):**
    - Run the vector search migration for RAG functionality
 
 ### 5. Development Server
@@ -219,29 +240,60 @@ The application uses a custom **Cosmic Theme** with:
 - Document uploads
 - Media generation
 
-## 💰 Payment Integration
+## 💰 Multi-Tenant Billing & Payment Integration
+
+### Stripe Integration Features
+
+- **Multi-Tenant Customer Management**: Automatic Stripe customer creation per company
+- **Company-Specific Billing**: Individual usage tracking and budget limits
+- **Stripe Customer Portal**: Self-service billing management for clients
+- **Automated Invoice Processing**: Webhook-driven payment status updates
+- **Checkout Sessions**: Secure payment processing with company context
+- **Usage-Based Billing**: Real-time API usage tracking and limits
+- **Plan Management**: Flexible pricing tiers (Starter, Professional, Enterprise, Custom)
+
+### Billing Workflow
+
+1. **Company Creation**: Auto-creates Stripe customer with company metadata
+2. **Plan Assignment**: Admins assign billing plans with usage limits
+3. **Usage Tracking**: Real-time monitoring of API costs and usage
+4. **Invoice Generation**: Automated invoicing with Stripe checkout links
+5. **Payment Processing**: Secure webhook-based payment completion
+6. **Customer Portal**: Clients manage billing, payments, and subscriptions
 
 ### Stripe Webhooks
 
-- Automated invoice status updates
-- Transaction record creation
-- Secure webhook signature verification
-- Payment completion handling
+- **Checkout Session Completion**: Updates invoice status and creates transactions
+- **Customer Portal Events**: Handles subscription and payment method changes
+- **Company Context**: All webhooks include company_id for proper isolation
+- **Security**: Signature verification and company ownership validation
 
 ## 🗄️ Database Schema
 
-### Core Tables
+### Core Tables (Multi-Tenant)
 
-- **profiles**: User authentication and roles
-- **companies**: Client and company management
-- **services**: Service offerings with billing
-- **invoices**: Invoice tracking and payments
-- **jobs**: Task and job management
-- **documents**: File storage and metadata
-- **media_assets**: AI-generated media storage
-- **company_config**: System configuration
-- **ai_agents**: AI agent configurations
-- **agent_logs**: AI interaction logs
+- **profiles**: User authentication and roles with company_id
+- **companies**: Client/company management with stripe_customer_id
+- **company_plans**: Billing plans and usage limits per company
+- **services**: Company-scoped service offerings with billing
+- **invoices**: Company-specific invoice tracking and payments
+- **jobs**: Company-scoped task and job management
+- **documents**: Company-specific file storage and metadata
+- **media_assets**: Company-scoped AI-generated media storage
+- **company_config**: Company-specific configuration settings
+- **api_usage**: Company-specific API usage tracking and costs
+- **ai_agents**: Company-scoped AI agent configurations
+- **agent_logs**: Company-specific AI interaction logs
+- **transactions**: Payment transaction records
+
+### Row Level Security (RLS)
+
+All tables implement comprehensive RLS policies:
+
+- **Admin Access**: Full read/write access to all companies
+- **Company Isolation**: Users can only access their company's data
+- **Agent Restrictions**: Limited access based on roles
+- **Secure Queries**: All queries include company_id validation
 
 ## 🔧 Development
 
@@ -289,18 +341,33 @@ VITE_GOOGLE_AI_API_KEY=...
 VITE_ZAPIER_WEBHOOK_URL=https://hooks.zapier.com/...
 VITE_TASKER_WEBHOOK_URL=https://your-tasker-url
 
-# Stripe (if using payments)
+# Stripe (Required for multi-tenant billing)
 VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...
+STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PORTAL_CONFIG_ID=... # Configure in Stripe Customer Portal settings
 ```
 
 ## 📚 Documentation
 
+### Core Systems
+
 - **[Agent System](./src/agents/README.md)**: AI agent orchestration details
+- **[Multi-Tenant Architecture](./MULTI_TENANT_README.md)**: Company isolation and RLS
+- **[Stripe Billing Integration](./STRIPE_BILLING_README.md)**: Payment processing guide
+
+### Feature Modules
+
 - **[Webhook System](./HOOKS_README.md)**: Automation and webhook setup
-- **[Media Studio](./MEDIA_STUDIO_SETUP.md)**: AI media generation guide
+- **[Media Studio](./MEDIA_STUDIO_ENHANCED_README.md)**: AI media generation guide
+- **[Knowledge Library](./KNOWLEDGE_LIBRARY_README.md)**: Document management
 - **[Vector Search](./VECTOR_SEARCH_README.md)**: RAG implementation details
+
+### API & Integrations
+
 - **[Stripe Webhooks](./supabase/functions/stripeWebhook/README.md)**: Payment integration
+- **[Checkout Sessions](./supabase/functions/create-checkout-session/README.md)**: Payment processing
+- **[Customer Portal](./supabase/functions/create-customer-portal-session/README.md)**: Billing management
 
 ## 🤝 Contributing
 

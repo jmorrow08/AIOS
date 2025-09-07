@@ -21,7 +21,13 @@ async function setupDatabase() {
     console.log('🚀 Setting up database tables...');
 
     // Read and execute SQL files
-    const sqlFiles = ['jobs_table.sql', 'invoices_table.sql', 'documents_table.sql'];
+    const sqlFiles = [
+      'clients_table.sql',
+      'employees_table.sql',
+      'jobs_updated_table.sql',
+      'invoices_table.sql',
+      'documents_table.sql',
+    ];
 
     for (const file of sqlFiles) {
       console.log(`📄 Executing ${file}...`);

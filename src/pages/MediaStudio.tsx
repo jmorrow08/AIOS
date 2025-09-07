@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { CosmicBackground } from '@/components/CosmicBackground';
 import { RadialMenu } from '@/components/RadialMenu';
@@ -6,371 +6,1346 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { createMediaAsset, getMediaAssets, MediaAsset } from '@/api/mediaAssets';
+import {
+  createMediaProject,
+  getMediaProjects,
+  updateMediaProject,
+  MediaProject,
+} from '@/api/mediaProjects';
+import { getSettingsByCategory, upsertSetting, Setting } from '@/api/settings';
+import {
+  Scene,
+  MediaProjectSettings,
+  VideoExportOptions,
+  RenderProgress,
+  TextOverlay,
+} from '@/lib/types';
+import {
+  rewritePrompt,
+  generateImage,
+  generateAudio,
+  uploadMediaToStorage,
+  calculateTotalDuration,
+  validateScene,
+  getDefaultProjectSettings,
+  saveProjectSettings,
+  loadProjectSettings,
+} from '@/utils/mediaServices';
 
-interface GeneratedMedia {
-  id: string;
-  type: 'image' | 'video' | 'audio';
-  url: string;
-  prompt: string;
-  service: string;
-  createdAt: Date;
+// Project type definitions
+type ProjectType = 'image' | 'video' | 'audio';
+type VideoStep = 'setup' | 'timeline' | 'preview' | 'export';
+
+interface ProjectState {
+  id?: string;
+  type: ProjectType;
+  title: string;
+  brief: string;
+  script: string;
+  scenes: Scene[];
+  settings: MediaProjectSettings;
+  exportOptions: VideoExportOptions;
+  renderProgress?: RenderProgress;
+  currentVideoStep: VideoStep;
+  isGenerating: boolean;
+  isRendering: boolean;
+  message?: { type: 'success' | 'error' | 'info'; text: string };
 }
 
 const MediaStudio: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('image');
-  const [imagePrompt, setImagePrompt] = useState('');
-  const [videoPrompt, setVideoPrompt] = useState('');
-  const [audioPrompt, setAudioPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedMedia, setGeneratedMedia] = useState<GeneratedMedia[]>([]);
+  const [activeTab, setActiveTab] = useState<'create' | 'library'>('create');
+  const [project, setProject] = useState<ProjectState>({
+    type: 'image',
+    title: '',
+    brief: '',
+    script: '',
+    scenes: [],
+    settings: getDefaultProjectSettings(),
+    exportOptions: {
+      format: 'mp4',
+      resolution: '1080p',
+      quality: 'high',
+      includeSubtitles: false,
+      publishToLibrary: false,
+    },
+    currentVideoStep: 'setup',
+    isGenerating: false,
+    isRendering: false,
+  });
+  const [mediaProjects, setMediaProjects] = useState<MediaProject[]>([]);
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Load media assets on component mount
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>({
+    openai_api_key: '',
+    stability_api_key: '',
+    elevenlabs_api_key: '',
+    dalle_api_key: '',
+  });
+  const [showApiSettings, setShowApiSettings] = useState(false);
+
+  // Load data on component mount
   useEffect(() => {
+    loadProjects();
     loadMediaAssets();
+    loadApiKeys();
   }, []);
+
+  const loadApiKeys = async () => {
+    const { data, error } = await getSettingsByCategory('ai_api_keys');
+    if (!error && data) {
+      const keys = (data as Setting[]).reduce((acc, setting) => {
+        acc[setting.key] = setting.value || '';
+        return acc;
+      }, {} as { [key: string]: string });
+      setApiKeys((prev) => ({ ...prev, ...keys }));
+    }
+  };
+
+  const loadProjects = async () => {
+    const { data, error } = await getMediaProjects();
+    if (!error && data) {
+      setMediaProjects(data as MediaProject[]);
+    }
+  };
 
   const loadMediaAssets = async () => {
     const { data, error } = await getMediaAssets();
-    if (error) {
-      console.error('Error loading media assets:', error);
-    } else if (data) {
+    if (!error && data) {
       setMediaAssets(data as MediaAsset[]);
     }
   };
 
-  const generateImage = async () => {
-    if (!imagePrompt.trim()) {
-      setMessage({ type: 'error', text: 'Please enter a prompt for image generation' });
-      return;
-    }
+  const updateProject = (updates: Partial<ProjectState>) => {
+    setProject((prev) => ({ ...prev, ...updates }));
+  };
 
-    setIsGenerating(true);
-    try {
-      // MidJourney/Ideogram stub - in real implementation, this would call the actual API
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate API delay
+  const setProjectType = (type: ProjectType) => {
+    updateProject({
+      type,
+      currentVideoStep: type === 'video' ? 'setup' : 'setup',
+      title: '',
+      brief: '',
+      script: '',
+      scenes: [],
+      settings: getDefaultProjectSettings(),
+      exportOptions: {
+        format: 'mp4',
+        resolution: '1080p',
+        quality: 'high',
+        includeSubtitles: false,
+        publishToLibrary: false,
+      },
+    });
+  };
 
-      const mockImageUrl = `https://picsum.photos/512/512?random=${Date.now()}`;
+  const saveApiKey = async (key: string, value: string) => {
+    const { error } = await upsertSetting(key, {
+      value,
+      description: `${key.replace('_', ' ').toUpperCase()} for AI services`,
+      category: 'ai_api_keys',
+      is_encrypted: true,
+    });
 
-      const newMedia: GeneratedMedia = {
-        id: `img-${Date.now()}`,
-        type: 'image',
-        url: mockImageUrl,
-        prompt: imagePrompt,
-        service: 'MidJourney/Ideogram',
-        createdAt: new Date(),
-      };
-
-      setGeneratedMedia((prev) => [newMedia, ...prev]);
-      setImagePrompt('');
-      setMessage({ type: 'success', text: 'Image generated successfully!' });
-    } catch (error) {
-      console.error('Error generating image:', error);
-      setMessage({ type: 'error', text: 'Failed to generate image' });
-    } finally {
-      setIsGenerating(false);
+    if (error) {
+      updateProject({ message: { type: 'error', text: 'Failed to save API key' } });
+    } else {
+      setApiKeys((prev) => ({ ...prev, [key]: value }));
+      updateProject({ message: { type: 'success', text: 'API key saved successfully' } });
     }
   };
 
-  const generateVideo = async () => {
-    if (!videoPrompt.trim()) {
-      setMessage({ type: 'error', text: 'Please enter a prompt for video generation' });
+  const checkApiKey = (service: string): boolean => {
+    const keyMap: { [key: string]: string } = {
+      openai: 'openai_api_key',
+      stability: 'stability_api_key',
+      dalle: 'dalle_api_key',
+      elevenlabs: 'elevenlabs_api_key',
+    };
+
+    const keyName = keyMap[service];
+    if (!keyName || !apiKeys[keyName]) {
+      updateProject({
+        message: {
+          type: 'error',
+          text: `Please set your ${service.toUpperCase()} API key in settings`,
+        },
+      });
+      setShowApiSettings(true);
+      return false;
+    }
+    return true;
+  };
+
+  // Generate script and convert to scenes
+  const generateScript = async () => {
+    if (!project.brief.trim()) {
+      updateProject({ message: { type: 'error', text: 'Please enter a project brief' } });
       return;
     }
 
-    setIsGenerating(true);
+    if (!checkApiKey('openai')) return;
+
+    updateProject({ isGenerating: true, message: undefined });
+
     try {
-      // HeyGen/Sora stub - in real implementation, this would call the actual API
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate API delay
+      // TODO: Replace with actual OpenAI API call
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      const mockVideoUrl = 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4';
+      const mockScript = `Scene 1: Introduction to ${project.brief}
 
-      const newMedia: GeneratedMedia = {
-        id: `vid-${Date.now()}`,
-        type: 'video',
-        url: mockVideoUrl,
-        prompt: videoPrompt,
-        service: 'HeyGen/Sora',
-        createdAt: new Date(),
-      };
+      Welcome to our comprehensive guide about ${project.brief}. In this video, we'll explore the key concepts and practical applications that make this topic essential for modern understanding.
 
-      setGeneratedMedia((prev) => [newMedia, ...prev]);
-      setVideoPrompt('');
-      setMessage({ type: 'success', text: 'Video generated successfully!' });
+      Scene 2: Key Concepts
+
+      Let's dive into the fundamental principles. The core elements include strategic planning, implementation strategies, and continuous improvement methodologies.
+
+      Scene 3: Real-world Applications
+
+      In practice, these concepts manifest in various scenarios. Organizations worldwide have successfully adopted these approaches to achieve remarkable results.
+
+      Scene 4: Future Outlook
+
+      Looking ahead, the landscape continues to evolve. Emerging technologies and innovative approaches promise to further enhance our capabilities.
+
+      Scene 5: Conclusion
+
+      In summary, mastering ${project.brief} opens doors to unprecedented opportunities. The journey of continuous learning and adaptation is just beginning.`;
+
+      // Parse script into scenes
+      const scenes = parseScriptIntoScenes(mockScript);
+
+      updateProject({
+        script: mockScript,
+        scenes,
+        currentVideoStep: 'timeline',
+        isGenerating: false,
+        message: {
+          type: 'success',
+          text: 'Script generated successfully! Scenes created for timeline editing.',
+        },
+      });
     } catch (error) {
-      console.error('Error generating video:', error);
-      setMessage({ type: 'error', text: 'Failed to generate video' });
-    } finally {
-      setIsGenerating(false);
+      updateProject({
+        isGenerating: false,
+        message: { type: 'error', text: 'Failed to generate script' },
+      });
     }
   };
 
-  const generateAudio = async () => {
-    if (!audioPrompt.trim()) {
-      setMessage({ type: 'error', text: 'Please enter a prompt for audio generation' });
+  // Parse script text into Scene objects
+  const parseScriptIntoScenes = (script: string): Scene[] => {
+    const sceneBlocks = script.split(/\n\s*Scene \d+:/).filter((block) => block.trim());
+    const sceneTitles = script.match(/Scene \d+:\s*[^\n]+/g) || [];
+
+    return sceneBlocks.map((content, index) => ({
+      id: `scene-${Date.now()}-${index}`,
+      title: sceneTitles[index]?.replace(/Scene \d+:\s*/, '') || `Scene ${index + 1}`,
+      script: content.trim(),
+      duration: 5, // Default 5 seconds per scene
+      order: index,
+    }));
+  };
+
+  // Generate image for a scene with optional prompt rewriting
+  const generateSceneImage = async (sceneIndex: number) => {
+    const scene = project.scenes[sceneIndex];
+    if (!scene) return;
+
+    let promptToUse = scene.imagePrompt || scene.script;
+
+    // Apply prompt rewriting if enabled
+    if (project.settings.promptRewriterEnabled) {
+      updateProject({
+        isGenerating: true,
+        message: { type: 'info', text: 'Rewriting prompt for better results...' },
+      });
+
+      const rewriteResult = await rewritePrompt(promptToUse, 'image');
+      if (rewriteResult.success && rewriteResult.rewrittenPrompt) {
+        promptToUse = rewriteResult.rewrittenPrompt;
+        // Update the scene with the rewritten prompt
+        updateScene(sceneIndex, { imagePrompt: promptToUse });
+      }
+    }
+
+    updateProject({ isGenerating: true, message: { type: 'info', text: 'Generating image...' } });
+
+    try {
+      const result = await generateImage(promptToUse, project.settings.imageService, {
+        agentId: 'media-studio',
+      });
+
+      if (result.success && result.imageUrl) {
+        updateScene(sceneIndex, { imageUrl: result.imageUrl });
+        updateProject({
+          isGenerating: false,
+          message: { type: 'success', text: 'Image generated successfully!' },
+        });
+      } else {
+        throw new Error(result.error || 'Failed to generate image');
+      }
+    } catch (error) {
+      updateProject({
+        isGenerating: false,
+        message: { type: 'error', text: 'Failed to generate image' },
+      });
+    }
+  };
+
+  // Update a specific scene
+  const updateScene = (sceneIndex: number, updates: Partial<Scene>) => {
+    const updatedScenes = [...project.scenes];
+    updatedScenes[sceneIndex] = { ...updatedScenes[sceneIndex], ...updates };
+    updateProject({ scenes: updatedScenes });
+  };
+
+  const generateImageForProject = async () => {
+    if (project.type === 'image') {
+      // For image projects, create a single scene
+      if (project.scenes.length === 0) {
+        const newScene: Scene = {
+          id: `scene-${Date.now()}`,
+          title: 'Generated Image',
+          script: project.brief,
+          duration: 5,
+          order: 0,
+          imagePrompt: project.brief,
+        };
+        updateProject({ scenes: [newScene] });
+      }
+
+      await generateSceneImage(0);
+    } else if (project.type === 'video') {
+      // For video projects, generate images for all scenes
+      if (project.scenes.length === 0) {
+        updateProject({
+          message: { type: 'error', text: 'No scenes found. Please generate a script first.' },
+        });
+        return;
+      }
+
+      for (let i = 0; i < project.scenes.length; i++) {
+        if (!project.scenes[i].imageUrl) {
+          await generateSceneImage(i);
+        }
+      }
+    }
+  };
+
+  // Generate audio for a scene with optional prompt rewriting
+  const generateSceneAudio = async (sceneIndex: number) => {
+    const scene = project.scenes[sceneIndex];
+    if (!scene) return;
+
+    let textToUse = scene.script;
+
+    // Apply prompt rewriting if enabled
+    if (project.settings.promptRewriterEnabled) {
+      updateProject({
+        isGenerating: true,
+        message: { type: 'info', text: 'Rewriting script for better narration...' },
+      });
+
+      const rewriteResult = await rewritePrompt(textToUse, 'audio');
+      if (rewriteResult.success && rewriteResult.rewrittenPrompt) {
+        textToUse = rewriteResult.rewrittenPrompt;
+      }
+    }
+
+    updateProject({
+      isGenerating: true,
+      message: { type: 'info', text: 'Generating audio narration...' },
+    });
+
+    try {
+      const result = await generateAudio(textToUse, project.settings.audioService, {
+        agentId: 'media-studio',
+      });
+
+      if (result.success && result.audioUrl) {
+        updateScene(sceneIndex, { audioUrl: result.audioUrl, audioPrompt: textToUse });
+        updateProject({
+          isGenerating: false,
+          message: { type: 'success', text: 'Audio generated successfully!' },
+        });
+      } else {
+        throw new Error(result.error || 'Failed to generate audio');
+      }
+    } catch (error) {
+      updateProject({
+        isGenerating: false,
+        message: { type: 'error', text: 'Failed to generate audio' },
+      });
+    }
+  };
+
+  // Generate audio for all scenes
+  const generateAllAudio = async () => {
+    for (let i = 0; i < project.scenes.length; i++) {
+      await generateSceneAudio(i);
+    }
+    updateProject({ currentVideoStep: 'preview' });
+  };
+
+  // Timeline management functions
+  const addScene = () => {
+    const newScene: Scene = {
+      id: `scene-${Date.now()}`,
+      title: `Scene ${project.scenes.length + 1}`,
+      script: '',
+      duration: 5,
+      order: project.scenes.length,
+    };
+    updateProject({ scenes: [...project.scenes, newScene] });
+  };
+
+  const deleteScene = (sceneIndex: number) => {
+    const updatedScenes = project.scenes.filter((_, index) => index !== sceneIndex);
+    updateProject({ scenes: updatedScenes });
+  };
+
+  const reorderScenes = (fromIndex: number, toIndex: number) => {
+    const updatedScenes = [...project.scenes];
+    const [movedScene] = updatedScenes.splice(fromIndex, 1);
+    updatedScenes.splice(toIndex, 0, movedScene);
+
+    // Update order property
+    updatedScenes.forEach((scene, index) => {
+      scene.order = index;
+    });
+
+    updateProject({ scenes: updatedScenes });
+  };
+
+  // Render video using the backend function
+  const renderVideo = async () => {
+    if (!project.id) {
+      updateProject({ message: { type: 'error', text: 'Please save the project first' } });
       return;
     }
 
-    setIsGenerating(true);
+    // Validate that all scenes have required assets
+    const invalidScenes = project.scenes.filter(
+      (scene) => !scene.imageUrl || !scene.audioUrl || !validateScene(scene).isValid,
+    );
+
+    if (invalidScenes.length > 0) {
+      updateProject({
+        message: {
+          type: 'error',
+          text: 'Please ensure all scenes have images and audio generated',
+        },
+      });
+      return;
+    }
+
+    updateProject({
+      isRendering: true,
+      renderProgress: { stage: 'preparing', progress: 0, message: 'Preparing render...' },
+    });
+
     try {
-      // ElevenLabs stub - in real implementation, this would call the actual API
-      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API delay
-
-      const mockAudioUrl = 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav';
-
-      const newMedia: GeneratedMedia = {
-        id: `aud-${Date.now()}`,
-        type: 'audio',
-        url: mockAudioUrl,
-        prompt: audioPrompt,
-        service: 'ElevenLabs',
-        createdAt: new Date(),
+      const renderRequest = {
+        projectId: project.id,
+        scenes: project.scenes.map((scene) => ({
+          id: scene.id,
+          imageUrl: scene.imageUrl!,
+          audioUrl: scene.audioUrl!,
+          duration: scene.duration,
+          textOverlays: scene.textOverlays || [],
+        })),
+        outputFormat: project.exportOptions.format,
+        resolution: project.exportOptions.resolution,
+        includeSubtitles: project.exportOptions.includeSubtitles,
       };
 
-      setGeneratedMedia((prev) => [newMedia, ...prev]);
-      setAudioPrompt('');
-      setMessage({ type: 'success', text: 'Audio generated successfully!' });
+      const { data, error } = await supabase.functions.invoke('renderVideo', {
+        body: renderRequest,
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        updateProject({
+          isRendering: false,
+          renderProgress: {
+            stage: 'complete',
+            progress: 100,
+            message: 'Video rendered successfully!',
+          },
+          currentVideoStep: 'export',
+          message: { type: 'success', text: 'Video rendered successfully!' },
+        });
+      } else {
+        throw new Error(data.error || 'Render failed');
+      }
     } catch (error) {
-      console.error('Error generating audio:', error);
-      setMessage({ type: 'error', text: 'Failed to generate audio' });
-    } finally {
-      setIsGenerating(false);
+      console.error('Render error:', error);
+      updateProject({
+        isRendering: false,
+        renderProgress: { stage: 'error', progress: 0, message: 'Render failed' },
+        message: { type: 'error', text: 'Failed to render video' },
+      });
     }
   };
 
-  const saveToLibrary = async (media: GeneratedMedia) => {
+  // Export and publish functions
+  const exportVideo = async () => {
+    if (!project.id) return;
+
     try {
-      // First, upload the file to Supabase Storage
-      const response = await fetch(media.url);
+      // Get the rendered video URL from the project
+      const { data: projectData, error } = await supabase
+        .from('media_projects')
+        .select('export_url')
+        .eq('id', project.id)
+        .single();
+
+      if (error || !projectData?.export_url) {
+        throw new Error('No rendered video found');
+      }
+
+      // Download the video
+      const response = await fetch(projectData.export_url);
       const blob = await response.blob();
 
-      const fileExt = media.type === 'image' ? 'jpg' : media.type === 'video' ? 'mp4' : 'wav';
-      const fileName = `${media.type}-${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2)}.${fileExt}`;
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project.title}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('media')
-        .upload(fileName, blob, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      updateProject({ message: { type: 'success', text: 'Video downloaded successfully!' } });
+    } catch (error) {
+      updateProject({ message: { type: 'error', text: 'Failed to download video' } });
+    }
+  };
 
-      if (uploadError) {
-        throw uploadError;
+  const publishToLibrary = async () => {
+    if (!project.id) return;
+
+    try {
+      const { data: projectData, error } = await supabase
+        .from('media_projects')
+        .select('export_url')
+        .eq('id', project.id)
+        .single();
+
+      if (error || !projectData?.export_url) {
+        throw new Error('No rendered video found');
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage.from('media').getPublicUrl(fileName);
+      // Create media asset entry
+      await createMediaAsset({
+        title: project.title,
+        description: project.brief,
+        file_url: projectData.export_url,
+        file_name: `${project.title}.mp4`,
+        file_type: 'video/mp4',
+        media_type: 'video',
+        ai_service: 'MediaStudio',
+      });
 
-      // Save to media_assets table
-      const assetData = {
-        title: `${media.type.charAt(0).toUpperCase() + media.type.slice(1)} - ${media.prompt.slice(
-          0,
-          50,
-        )}...`,
-        description: `Generated using ${media.service}`,
-        file_url: urlData.publicUrl,
-        file_name: fileName,
-        file_size: blob.size,
-        file_type: blob.type || `application/${media.type}`,
-        media_type: media.type,
-        prompt: media.prompt,
-        ai_service: media.service,
+      updateProject({
+        message: { type: 'success', text: 'Video published to Knowledge Library!' },
+      });
+    } catch (error) {
+      updateProject({ message: { type: 'error', text: 'Failed to publish to library' } });
+    }
+  };
+
+  // Save Project
+  const saveProject = async () => {
+    if (!project.title.trim()) {
+      updateProject({ message: { type: 'error', text: 'Please enter a project title' } });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Prepare project data with new structure
+      const projectData = {
+        title: project.title,
+        type: project.type,
+        description: `AI-generated ${project.type} project`,
+        brief: project.brief,
+        script: project.script,
+        scenes: project.scenes,
+        settings: project.settings,
+        export_options: project.exportOptions,
+        status: (project.type === 'video' && project.currentVideoStep === 'export'
+          ? 'completed'
+          : 'draft') as 'draft' | 'completed' | 'exported',
       };
 
-      const { data: assetResult, error: assetError } = await createMediaAsset(assetData);
-
-      if (assetError) {
-        throw assetError;
+      let savedProject;
+      if (project.id) {
+        // Update existing project
+        const result = await updateMediaProject(project.id, projectData);
+        if (result.error) throw result.error;
+        savedProject = result.data;
+      } else {
+        // Create new project
+        const result = await createMediaProject(projectData);
+        if (result.error) throw result.error;
+        savedProject = result.data;
       }
 
-      // Remove from generated media and add to assets
-      setGeneratedMedia((prev) => prev.filter((m) => m.id !== media.id));
-      if (assetResult) {
-        setMediaAssets((prev) => [assetResult as MediaAsset, ...prev]);
-      }
+      // Update project with ID
+      updateProject({
+        id: savedProject.id,
+        message: { type: 'success', text: 'Project saved successfully!' },
+      });
 
-      setMessage({ type: 'success', text: 'Media saved to library successfully!' });
+      // Reload projects
+      loadProjects();
     } catch (error) {
-      console.error('Error saving to library:', error);
-      setMessage({ type: 'error', text: 'Failed to save media to library' });
+      console.error('Error saving project:', error);
+      updateProject({ message: { type: 'error', text: 'Failed to save project' } });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const renderMediaPreview = (media: GeneratedMedia) => {
-    switch (media.type) {
-      case 'image':
-        return (
-          <img
-            src={media.url}
-            alt={media.prompt}
-            className="w-full h-full object-cover rounded-lg"
-          />
-        );
-      case 'video':
-        return <video src={media.url} controls className="w-full h-full object-cover rounded-lg" />;
-      case 'audio':
-        return (
-          <div className="flex items-center justify-center h-full bg-cosmic-light bg-opacity-20 rounded-lg">
-            <div className="text-center">
-              <svg
-                className="mx-auto h-16 w-16 text-cosmic-accent mb-4"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 2C10.896 2 10 2.896 10 4V12C8.896 12 8 12.896 8 14C8 15.104 8.896 16 10 16V20C10 21.104 10.896 22 12 22C13.104 22 14 21.104 14 20V16C15.104 16 16 15.104 16 14C16 12.896 15.104 12 14 12V4C14 2.896 13.104 2 12 2Z" />
-              </svg>
-              <audio controls className="w-full">
-                <source src={media.url} type="audio/wav" />
-              </audio>
+  const renderProjectSetup = () => (
+    <div className="space-y-6">
+      <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
+        <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">New Project</h2>
+
+        <div className="space-y-4">
+          <div>
+            <Label className="text-cosmic-light">Project Type</Label>
+            <div className="flex gap-4 mt-2">
+              {[
+                { type: 'image' as ProjectType, label: 'Image Creation', icon: '🖼️' },
+                { type: 'video' as ProjectType, label: 'Video Slideshow', icon: '🎬' },
+                { type: 'audio' as ProjectType, label: 'Audio Generation', icon: '🎵' },
+              ].map(({ type, label, icon }) => (
+                <Button
+                  key={type}
+                  onClick={() => setProjectType(type)}
+                  variant={project.type === type ? 'default' : 'outline'}
+                  className={`flex-1 ${
+                    project.type === type
+                      ? 'bg-cosmic-accent hover:bg-cosmic-accent-hover'
+                      : 'border-cosmic-light text-cosmic-light hover:bg-cosmic-light hover:bg-opacity-20'
+                  }`}
+                >
+                  {icon} {label}
+                </Button>
+              ))}
             </div>
           </div>
-        );
-      default:
-        return null;
-    }
-  };
 
-  return (
-    <div className="relative min-h-screen bg-cosmic-dark text-white">
-      <CosmicBackground />
-      <RadialMenu />
+          <div>
+            <Label htmlFor="title" className="text-cosmic-light">
+              Project Title
+            </Label>
+            <Input
+              id="title"
+              placeholder="Enter project title..."
+              value={project.title}
+              onChange={(e) => updateProject({ title: e.target.value })}
+              className="bg-cosmic-dark border-cosmic-light text-white mt-1"
+            />
+          </div>
 
-      <div className="relative z-10 p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-cosmic-highlight mb-2">Media Studio</h1>
-          <p className="text-xl text-cosmic-accent">
-            Generate and create multimedia content with AI
-          </p>
+          {project.type === 'video' && (
+            <div>
+              <Label htmlFor="brief" className="text-cosmic-light">
+                Project Brief
+              </Label>
+              <Textarea
+                id="brief"
+                placeholder="Describe what your video should be about..."
+                value={project.brief}
+                onChange={(e) => updateProject({ brief: e.target.value })}
+                className="bg-cosmic-dark border-cosmic-light text-white mt-1 min-h-[80px]"
+              />
+            </div>
+          )}
+
+          {project.type === 'image' && (
+            <div>
+              <Label htmlFor="brief" className="text-cosmic-light">
+                Image Description
+              </Label>
+              <Textarea
+                id="brief"
+                placeholder="Describe the image you want to generate..."
+                value={project.brief}
+                onChange={(e) => updateProject({ brief: e.target.value })}
+                className="bg-cosmic-dark border-cosmic-light text-white mt-1 min-h-[80px]"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderVideoWizard = () => {
+    const steps = [
+      { id: 'setup', label: 'Setup', icon: '⚙️' },
+      { id: 'timeline', label: 'Timeline', icon: '🎬' },
+      { id: 'preview', label: 'Preview', icon: '▶️' },
+      { id: 'export', label: 'Export', icon: '📤' },
+    ];
+
+    return (
+      <div className="space-y-6">
+        {/* Step indicator */}
+        <div className="flex justify-between mb-8">
+          {steps.map((step, index) => {
+            const isActive = step.id === project.currentVideoStep;
+            const isCompleted = steps.findIndex((s) => s.id === project.currentVideoStep) > index;
+
+            return (
+              <div key={step.id} className="flex flex-col items-center">
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${
+                    isCompleted
+                      ? 'bg-green-500'
+                      : isActive
+                      ? 'bg-cosmic-accent'
+                      : 'bg-cosmic-light bg-opacity-20'
+                  }`}
+                >
+                  {step.icon}
+                </div>
+                <span
+                  className={`text-sm ${isActive ? 'text-cosmic-accent' : 'text-cosmic-light'}`}
+                >
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Message Display */}
-        {message && (
-          <div
-            className={`mb-6 p-4 rounded-lg ${
-              message.type === 'success'
-                ? 'bg-green-500 bg-opacity-20 text-green-300 border border-green-500'
-                : 'bg-red-500 bg-opacity-20 text-red-300 border border-red-500'
-            }`}
-          >
-            {message.text}
-            <button onClick={() => setMessage(null)} className="float-right ml-4 text-xl font-bold">
-              ×
-            </button>
+        {/* Setup Step */}
+        {project.currentVideoStep === 'setup' && (
+          <div className="space-y-6">
+            {/* Tool Settings */}
+            <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+              <CardHeader>
+                <CardTitle className="text-cosmic-highlight">AI Tool Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-cosmic-light">Image Service</Label>
+                    <Select
+                      value={project.settings.imageService}
+                      onValueChange={(value: any) =>
+                        updateProject({
+                          settings: { ...project.settings, imageService: value },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="bg-cosmic-dark border-cosmic-light text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dalle">DALL-E</SelectItem>
+                        <SelectItem value="stability">Stability AI</SelectItem>
+                        <SelectItem value="midjourney">Midjourney</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-cosmic-light">Audio Service</Label>
+                    <Select
+                      value={project.settings.audioService}
+                      onValueChange={(value: any) =>
+                        updateProject({
+                          settings: { ...project.settings, audioService: value },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="bg-cosmic-dark border-cosmic-light text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
+                        <SelectItem value="google-tts">Google TTS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-cosmic-light">Video Service</Label>
+                    <Select
+                      value={project.settings.videoService}
+                      onValueChange={(value: any) =>
+                        updateProject({
+                          settings: { ...project.settings, videoService: value },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="bg-cosmic-dark border-cosmic-light text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="heygen">HeyGen</SelectItem>
+                        <SelectItem value="sora">Sora</SelectItem>
+                        <SelectItem value="hedra">Hedra</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="promptRewriter"
+                    checked={project.settings.promptRewriterEnabled}
+                    onChange={(e) =>
+                      updateProject({
+                        settings: { ...project.settings, promptRewriterEnabled: e.target.checked },
+                      })
+                    }
+                    className="rounded border-cosmic-light"
+                  />
+                  <Label htmlFor="promptRewriter" className="text-cosmic-light">
+                    Enable AI Prompt Rewriter (enhances prompts for better results)
+                  </Label>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Script Generation */}
+            <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+              <CardHeader>
+                <CardTitle className="text-cosmic-highlight">Generate Script</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button
+                  onClick={generateScript}
+                  disabled={project.isGenerating || !project.brief.trim()}
+                  className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
+                >
+                  {project.isGenerating ? 'Generating...' : 'Generate Draft Script'}
+                </Button>
+
+                {project.script && (
+                  <div>
+                    <Label className="text-cosmic-light">Generated Script (Edit as needed)</Label>
+                    <Textarea
+                      value={project.script}
+                      onChange={(e) => updateProject({ script: e.target.value })}
+                      className="bg-cosmic-dark border-cosmic-light text-white mt-1 min-h-[200px]"
+                    />
+                    <Button
+                      onClick={() => updateProject({ currentVideoStep: 'timeline' })}
+                      className="mt-4 bg-green-600 hover:bg-green-700"
+                    >
+                      Proceed to Timeline →
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-cosmic-light bg-opacity-20">
-            <TabsTrigger value="image" className="data-[state=active]:bg-cosmic-accent">
-              Image Generation
-            </TabsTrigger>
-            <TabsTrigger value="video" className="data-[state=active]:bg-cosmic-accent">
-              Video Generation
-            </TabsTrigger>
-            <TabsTrigger value="audio" className="data-[state=active]:bg-cosmic-accent">
-              Audio Generation
-            </TabsTrigger>
-          </TabsList>
+        {/* Timeline Editor Step */}
+        {project.currentVideoStep === 'timeline' && (
+          <div className="space-y-6">
+            <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+              <CardHeader>
+                <CardTitle className="text-cosmic-highlight flex justify-between items-center">
+                  Scene Timeline
+                  <Button onClick={addScene} size="sm" className="bg-cosmic-accent">
+                    + Add Scene
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {project.scenes.map((scene, index) => (
+                    <Card key={scene.id} className="bg-cosmic-dark border-cosmic-light">
+                      <CardContent className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {/* Scene Info */}
+                          <div className="space-y-2">
+                            <Label className="text-cosmic-light">Scene {index + 1}</Label>
+                            <Input
+                              placeholder="Scene title"
+                              value={scene.title}
+                              onChange={(e) => updateScene(index, { title: e.target.value })}
+                              className="bg-cosmic-light bg-opacity-10 border-cosmic-light text-white"
+                            />
+                            <Input
+                              type="number"
+                              placeholder="Duration (sec)"
+                              value={scene.duration}
+                              onChange={(e) =>
+                                updateScene(index, { duration: parseInt(e.target.value) || 5 })
+                              }
+                              className="bg-cosmic-light bg-opacity-10 border-cosmic-light text-white"
+                            />
+                          </div>
 
-          {/* Image Tab */}
-          <TabsContent value="image" className="space-y-6">
-            <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
-              <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">
-                MidJourney / Ideogram Image Generation
-              </h2>
-              <div className="space-y-4">
-                <Textarea
-                  placeholder="Describe the image you want to generate..."
-                  value={imagePrompt}
-                  onChange={(e) => setImagePrompt(e.target.value)}
-                  className="min-h-[100px] bg-cosmic-dark border-cosmic-light text-white"
+                          {/* Script */}
+                          <div className="space-y-2">
+                            <Label className="text-cosmic-light">Script</Label>
+                            <Textarea
+                              placeholder="Scene script..."
+                              value={scene.script}
+                              onChange={(e) => updateScene(index, { script: e.target.value })}
+                              className="bg-cosmic-light bg-opacity-10 border-cosmic-light text-white min-h-[80px]"
+                            />
+                          </div>
+
+                          {/* Image */}
+                          <div className="space-y-2">
+                            <Label className="text-cosmic-light">Image</Label>
+                            {scene.imageUrl ? (
+                              <div className="space-y-2">
+                                <img
+                                  src={scene.imageUrl}
+                                  alt={scene.title}
+                                  className="w-full h-20 object-cover rounded"
+                                />
+                                <Button
+                                  onClick={() => generateSceneImage(index)}
+                                  disabled={project.isGenerating}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full"
+                                >
+                                  Regenerate
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                onClick={() => generateSceneImage(index)}
+                                disabled={project.isGenerating}
+                                className="w-full bg-cosmic-accent"
+                              >
+                                Generate Image
+                              </Button>
+                            )}
+                          </div>
+
+                          {/* Audio */}
+                          <div className="space-y-2">
+                            <Label className="text-cosmic-light">Audio</Label>
+                            {scene.audioUrl ? (
+                              <div className="space-y-2">
+                                <audio controls className="w-full">
+                                  <source src={scene.audioUrl} type="audio/mpeg" />
+                                </audio>
+                                <Button
+                                  onClick={() => generateSceneAudio(index)}
+                                  disabled={project.isGenerating}
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full"
+                                >
+                                  Regenerate
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                onClick={() => generateSceneAudio(index)}
+                                disabled={project.isGenerating}
+                                className="w-full bg-cosmic-accent"
+                              >
+                                Generate Audio
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => deleteScene(index)}
+                              size="sm"
+                              variant="destructive"
+                              className="w-full"
+                            >
+                              Delete Scene
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="flex justify-between mt-6">
+                  <Button
+                    onClick={() => updateProject({ currentVideoStep: 'setup' })}
+                    variant="outline"
+                  >
+                    ← Back to Setup
+                  </Button>
+                  <Button
+                    onClick={() => updateProject({ currentVideoStep: 'preview' })}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    Proceed to Preview →
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Preview Step */}
+        {project.currentVideoStep === 'preview' && (
+          <div className="space-y-6">
+            <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+              <CardHeader>
+                <CardTitle className="text-cosmic-highlight">Project Preview</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Preview Player */}
+                <div className="bg-cosmic-dark rounded-lg p-4">
+                  <h4 className="text-cosmic-light font-semibold mb-4">Video Preview</h4>
+
+                  {project.scenes.length > 0 ? (
+                    <div className="relative">
+                      <div className="aspect-video bg-black rounded-lg overflow-hidden mb-4 relative">
+                        {project.scenes.map(
+                          (scene, index) =>
+                            scene.imageUrl && (
+                              <img
+                                key={scene.id}
+                                src={scene.imageUrl}
+                                alt={`Scene ${index + 1}`}
+                                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
+                                  index === 0 ? 'opacity-100' : 'opacity-0'
+                                }`}
+                                style={{ zIndex: project.scenes.length - index }}
+                              />
+                            ),
+                        )}
+                      </div>
+
+                      <div className="flex justify-center gap-4">
+                        <Button className="bg-cosmic-accent">▶️ Play Preview</Button>
+                        <Button variant="outline">⏸️ Pause</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="aspect-video bg-cosmic-light bg-opacity-20 rounded-lg flex items-center justify-center">
+                      <p className="text-cosmic-light">No scenes available for preview</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Timeline Overview */}
+                <div className="bg-cosmic-dark rounded-lg p-4">
+                  <h4 className="text-cosmic-light font-semibold mb-4">Timeline Overview</h4>
+                  <div className="space-y-2">
+                    {project.scenes.map((scene, index) => (
+                      <div
+                        key={scene.id}
+                        className="flex items-center gap-3 p-2 bg-cosmic-light bg-opacity-10 rounded"
+                      >
+                        <span className="text-cosmic-accent font-mono text-sm w-12">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        {scene.imageUrl && (
+                          <img
+                            src={scene.imageUrl}
+                            alt={scene.title}
+                            className="w-12 h-12 object-cover rounded"
+                          />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-cosmic-light font-medium">{scene.title}</p>
+                          <p className="text-cosmic-light text-sm opacity-75">
+                            {scene.duration}s • {scene.script.slice(0, 50)}...
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Badge variant={scene.imageUrl ? 'default' : 'secondary'}>
+                            {scene.imageUrl ? '✓' : '✗'} Image
+                          </Badge>
+                          <Badge variant={scene.audioUrl ? 'default' : 'secondary'}>
+                            {scene.audioUrl ? '✓' : '✗'} Audio
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-between">
+                  <Button
+                    onClick={() => updateProject({ currentVideoStep: 'timeline' })}
+                    variant="outline"
+                  >
+                    ← Back to Timeline
+                  </Button>
+                  <Button
+                    onClick={renderVideo}
+                    disabled={project.isRendering}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {project.isRendering ? 'Rendering...' : 'Render Video'}
+                  </Button>
+                </div>
+
+                {/* Render Progress */}
+                {project.isRendering && project.renderProgress && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-cosmic-light">{project.renderProgress.message}</span>
+                      <span className="text-cosmic-accent">{project.renderProgress.progress}%</span>
+                    </div>
+                    <Progress value={project.renderProgress.progress} className="w-full" />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Export Step */}
+        {project.currentVideoStep === 'export' && (
+          <div className="space-y-6">
+            <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+              <CardHeader>
+                <CardTitle className="text-cosmic-highlight">Export & Share</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Export Options */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-cosmic-light">Output Format</Label>
+                    <Select
+                      value={project.exportOptions.format}
+                      onValueChange={(value: any) =>
+                        updateProject({
+                          exportOptions: { ...project.exportOptions, format: value },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="bg-cosmic-dark border-cosmic-light text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mp4">MP4</SelectItem>
+                        <SelectItem value="webm">WebM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-cosmic-light">Resolution</Label>
+                    <Select
+                      value={project.exportOptions.resolution}
+                      onValueChange={(value: any) =>
+                        updateProject({
+                          exportOptions: { ...project.exportOptions, resolution: value },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="bg-cosmic-dark border-cosmic-light text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="480p">480p</SelectItem>
+                        <SelectItem value="720p">720p</SelectItem>
+                        <SelectItem value="1080p">1080p</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Export Actions */}
+                <div className="flex gap-4">
+                  <Button onClick={exportVideo} className="flex-1 bg-cosmic-accent">
+                    📥 Download Video
+                  </Button>
+                  <Button
+                    onClick={publishToLibrary}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    📚 Publish to Library
+                  </Button>
+                </div>
+
+                <div className="flex justify-between">
+                  <Button
+                    onClick={() => updateProject({ currentVideoStep: 'preview' })}
+                    variant="outline"
+                  >
+                    ← Back to Preview
+                  </Button>
+                  <Button
+                    onClick={saveProject}
+                    disabled={isLoading}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isLoading ? 'Saving...' : 'Save Project'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderImageProject = () => (
+    <div className="space-y-6">
+      <Card className="bg-cosmic-light bg-opacity-10 border-cosmic-light">
+        <CardHeader>
+          <CardTitle className="text-cosmic-highlight">Image Generation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Tool Settings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <Label className="text-cosmic-light">Image Service</Label>
+              <Select
+                value={project.settings.imageService}
+                onValueChange={(value: any) =>
+                  updateProject({
+                    settings: { ...project.settings, imageService: value },
+                  })
+                }
+              >
+                <SelectTrigger className="bg-cosmic-dark border-cosmic-light text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dalle">DALL-E</SelectItem>
+                  <SelectItem value="stability">Stability AI</SelectItem>
+                  <SelectItem value="midjourney">Midjourney</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="imagePromptRewriter"
+                checked={project.settings.promptRewriterEnabled}
+                onChange={(e) =>
+                  updateProject({
+                    settings: { ...project.settings, promptRewriterEnabled: e.target.checked },
+                  })
+                }
+                className="rounded border-cosmic-light"
+              />
+              <Label htmlFor="imagePromptRewriter" className="text-cosmic-light text-sm">
+                Enable AI Prompt Rewriter
+              </Label>
+            </div>
+          </div>
+
+          <Button
+            onClick={generateImageForProject}
+            disabled={project.isGenerating || !project.brief.trim()}
+            className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
+          >
+            {project.isGenerating ? 'Generating...' : 'Generate Image'}
+          </Button>
+
+          {project.scenes.length > 0 && project.scenes[0].imageUrl && (
+            <div>
+              <h4 className="text-lg font-semibold text-cosmic-light mb-4">Generated Image</h4>
+              <div className="bg-cosmic-dark rounded-lg p-4 inline-block">
+                <img
+                  src={project.scenes[0].imageUrl}
+                  alt={project.scenes[0].imagePrompt || project.brief}
+                  className="w-64 h-64 object-cover rounded mb-4"
                 />
-                <Button
-                  onClick={generateImage}
-                  disabled={isGenerating || !imagePrompt.trim()}
-                  className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
-                >
-                  {isGenerating ? 'Generating...' : 'Generate Image'}
-                </Button>
+                <div className="space-y-2">
+                  <Button
+                    onClick={generateImageForProject}
+                    disabled={project.isGenerating}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Generate Variation
+                  </Button>
+                  <Button
+                    onClick={saveProject}
+                    disabled={isLoading}
+                    className="bg-green-600 hover:bg-green-700 w-full"
+                  >
+                    {isLoading ? 'Saving...' : 'Save Project'}
+                  </Button>
+                </div>
               </div>
             </div>
-          </TabsContent>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 
-          {/* Video Tab */}
-          <TabsContent value="video" className="space-y-6">
-            <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
-              <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">
-                HeyGen / Sora Video Generation
-              </h2>
-              <div className="space-y-4">
-                <Textarea
-                  placeholder="Describe the video scene you want to generate..."
-                  value={videoPrompt}
-                  onChange={(e) => setVideoPrompt(e.target.value)}
-                  className="min-h-[100px] bg-cosmic-dark border-cosmic-light text-white"
-                />
-                <Button
-                  onClick={generateVideo}
-                  disabled={isGenerating || !videoPrompt.trim()}
-                  className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
-                >
-                  {isGenerating ? 'Generating...' : 'Generate Video'}
-                </Button>
-              </div>
-            </div>
-          </TabsContent>
+  const renderMediaLibrary = () => (
+    <div className="space-y-6">
+      <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
+        <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">Media Library</h2>
 
-          {/* Audio Tab */}
-          <TabsContent value="audio" className="space-y-6">
-            <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
-              <h2 className="text-2xl font-bold text-cosmic-highlight mb-4">
-                ElevenLabs Audio Generation
-              </h2>
-              <div className="space-y-4">
-                <Textarea
-                  placeholder="Describe the audio you want to generate..."
-                  value={audioPrompt}
-                  onChange={(e) => setAudioPrompt(e.target.value)}
-                  className="min-h-[100px] bg-cosmic-dark border-cosmic-light text-white"
-                />
-                <Button
-                  onClick={generateAudio}
-                  disabled={isGenerating || !audioPrompt.trim()}
-                  className="bg-cosmic-accent hover:bg-cosmic-accent-hover"
-                >
-                  {isGenerating ? 'Generating...' : 'Generate Audio'}
-                </Button>
-              </div>
-            </div>
-          </TabsContent>
-        </Tabs>
-
-        {/* Generated Media Preview */}
-        {generatedMedia.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-2xl font-bold mb-4 text-cosmic-highlight">Generated Media</h2>
+        {mediaProjects.length > 0 && (
+          <div>
+            <h3 className="text-xl font-semibold text-cosmic-light mb-4">Saved Projects</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {generatedMedia.map((media) => (
-                <div key={media.id} className="bg-cosmic-light bg-opacity-20 rounded-lg p-4">
-                  <div className="aspect-video bg-cosmic-dark rounded mb-3 overflow-hidden">
-                    {renderMediaPreview(media)}
+              {mediaProjects.map((savedProject) => (
+                <div key={savedProject.id} className="bg-cosmic-dark rounded-lg p-4">
+                  <div className="aspect-video bg-cosmic-light bg-opacity-20 rounded mb-3 overflow-hidden">
+                    {savedProject.image_paths && savedProject.image_paths.length > 0 ? (
+                      <img
+                        src={savedProject.image_paths[0]}
+                        alt={savedProject.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl">
+                        {savedProject.type === 'video'
+                          ? '🎬'
+                          : savedProject.type === 'audio'
+                          ? '🎵'
+                          : '🖼️'}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <p className="text-sm font-medium text-cosmic-accent">{media.service}</p>
-                    <p className="text-xs text-cosmic-light line-clamp-2">{media.prompt}</p>
+                    <h4 className="font-semibold text-cosmic-highlight">{savedProject.title}</h4>
+                    <p className="text-sm text-cosmic-light capitalize">
+                      {savedProject.type} Project
+                    </p>
                     <p className="text-xs text-cosmic-light">
-                      {media.createdAt.toLocaleDateString()}
+                      {new Date(savedProject.created_at).toLocaleDateString()}
                     </p>
                     <Button
-                      onClick={() => saveToLibrary(media)}
-                      className="w-full bg-green-600 hover:bg-green-700"
+                      onClick={() => {
+                        /* TODO: Load project */
+                      }}
                       size="sm"
+                      variant="outline"
+                      className="w-full"
                     >
-                      Save to Library
+                      Load Project
                     </Button>
                   </div>
                 </div>
@@ -379,14 +1354,13 @@ const MediaStudio: React.FC = () => {
           </div>
         )}
 
-        {/* Media Library */}
         {mediaAssets.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-2xl font-bold mb-4 text-cosmic-highlight">Media Library</h2>
+            <h3 className="text-xl font-semibold text-cosmic-light mb-4">Individual Assets</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {mediaAssets.map((asset) => (
-                <div key={asset.id} className="bg-cosmic-light bg-opacity-20 rounded-lg p-4">
-                  <div className="aspect-video bg-cosmic-dark rounded mb-3 overflow-hidden">
+                <div key={asset.id} className="bg-cosmic-dark rounded-lg p-4">
+                  <div className="aspect-video bg-cosmic-light bg-opacity-20 rounded mb-3 overflow-hidden">
                     {asset.media_type === 'image' && (
                       <img
                         src={asset.file_url}
@@ -395,28 +1369,22 @@ const MediaStudio: React.FC = () => {
                       />
                     )}
                     {asset.media_type === 'video' && (
-                      <video src={asset.file_url} className="w-full h-full object-cover" controls />
+                      <video src={asset.file_url} className="w-full h-full object-cover" />
                     )}
                     {asset.media_type === 'audio' && (
-                      <div className="flex items-center justify-center h-full bg-cosmic-light bg-opacity-20">
-                        <svg
-                          className="h-16 w-16 text-cosmic-accent"
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M12 2C10.896 2 10 2.896 10 4V12C8.896 12 8 12.896 8 14C8 15.104 8.896 16 10 16V20C10 21.104 10.896 22 12 22C13.104 22 14 21.104 14 20V16C15.104 16 16 15.104 16 14C16 12.896 15.104 12 14 12V4C14 2.896 13.104 2 12 2Z" />
-                        </svg>
+                      <div className="w-full h-full flex items-center justify-center text-4xl">
+                        🎵
                       </div>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <p className="text-sm font-medium truncate" title={asset.title}>
+                    <h4
+                      className="font-semibold text-cosmic-highlight truncate"
+                      title={asset.title}
+                    >
                       {asset.title}
-                    </p>
-                    <p className="text-xs text-cosmic-light">{asset.ai_service}</p>
-                    <p className="text-xs text-cosmic-light">
-                      {new Date(asset.created_at).toLocaleDateString()}
-                    </p>
+                    </h4>
+                    <p className="text-sm text-cosmic-light">{asset.ai_service}</p>
                     <div className="flex gap-2">
                       <Button
                         onClick={() => window.open(asset.file_url, '_blank')}
@@ -441,6 +1409,155 @@ const MediaStudio: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative min-h-screen bg-cosmic-dark text-white">
+      <CosmicBackground />
+      <RadialMenu />
+
+      <div className="relative z-10 p-8">
+        <div className="mb-8">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-cosmic-highlight mb-2">Media Studio</h1>
+              <p className="text-xl text-cosmic-accent">
+                Create professional multimedia content with AI-powered tools
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowApiSettings(!showApiSettings)}
+              variant="outline"
+              className="border-cosmic-light text-cosmic-light hover:bg-cosmic-light hover:bg-opacity-20"
+            >
+              ⚙️ API Settings
+            </Button>
+          </div>
+
+          {/* API Settings Panel */}
+          {showApiSettings && (
+            <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6 mb-6">
+              <h3 className="text-xl font-bold text-cosmic-highlight mb-4">API Configuration</h3>
+              <p className="text-cosmic-light mb-4">
+                Configure your API keys for AI services. Keys are stored securely in your database.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  {
+                    key: 'openai_api_key',
+                    label: 'OpenAI API Key',
+                    service: 'GPT Script Generation',
+                  },
+                  { key: 'dalle_api_key', label: 'DALL-E API Key', service: 'Image Generation' },
+                  {
+                    key: 'stability_api_key',
+                    label: 'Stability AI API Key',
+                    service: 'Alternative Image Generation',
+                  },
+                  {
+                    key: 'elevenlabs_api_key',
+                    label: 'ElevenLabs API Key',
+                    service: 'Text-to-Speech',
+                  },
+                ].map(({ key, label, service }) => (
+                  <div key={key} className="space-y-2">
+                    <Label htmlFor={key} className="text-cosmic-light text-sm">
+                      {label} <span className="text-xs text-cosmic-accent">({service})</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id={key}
+                        type="password"
+                        placeholder={`Enter ${label}`}
+                        value={apiKeys[key] || ''}
+                        onChange={(e) => setApiKeys((prev) => ({ ...prev, [key]: e.target.value }))}
+                        className="bg-cosmic-dark border-cosmic-light text-white flex-1"
+                      />
+                      <Button
+                        onClick={() => saveApiKey(key, apiKeys[key] || '')}
+                        disabled={!apiKeys[key]?.trim()}
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 p-3 bg-cosmic-dark rounded text-sm text-cosmic-light">
+                <strong>Cost Estimation:</strong>
+                <ul className="mt-2 space-y-1">
+                  <li>• Script Generation: ~$0.02 per request (OpenAI GPT)</li>
+                  <li>• Image Generation: ~$0.04 per image (DALL-E) or ~$0.03 (Stability AI)</li>
+                  <li>• Audio Generation: ~$0.15 per minute (ElevenLabs)</li>
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Message Display */}
+        {project.message && (
+          <Alert
+            className={`mb-6 ${
+              project.message.type === 'success'
+                ? 'border-green-500 bg-green-500 bg-opacity-20 text-green-300'
+                : project.message.type === 'error'
+                ? 'border-red-500 bg-red-500 bg-opacity-20 text-red-300'
+                : 'border-blue-500 bg-blue-500 bg-opacity-20 text-blue-300'
+            }`}
+          >
+            <AlertDescription>
+              {project.message.text}
+              <button
+                onClick={() => updateProject({ message: undefined })}
+                className="float-right ml-4 text-xl font-bold hover:opacity-75"
+              >
+                ×
+              </button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as 'create' | 'library')}
+          className="w-full"
+        >
+          <TabsList className="grid w-full grid-cols-2 bg-cosmic-light bg-opacity-20">
+            <TabsTrigger value="create" className="data-[state=active]:bg-cosmic-accent">
+              Create New Project
+            </TabsTrigger>
+            <TabsTrigger value="library" className="data-[state=active]:bg-cosmic-accent">
+              Media Library
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="create" className="space-y-6">
+            {renderProjectSetup()}
+            {project.type === 'video' && renderVideoWizard()}
+            {project.type === 'image' && renderImageProject()}
+            {project.type === 'audio' && (
+              <div className="bg-cosmic-light bg-opacity-10 rounded-lg p-6">
+                <h3 className="text-xl font-bold text-cosmic-highlight mb-4">
+                  Audio Generation (Coming Soon)
+                </h3>
+                <p className="text-cosmic-light">
+                  Standalone audio generation will be implemented in the next update.
+                </p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="library" className="space-y-6">
+            {renderMediaLibrary()}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

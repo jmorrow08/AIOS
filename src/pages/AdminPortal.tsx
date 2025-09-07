@@ -34,6 +34,8 @@ import { getCompanies, Company, createCompany } from '@/api/companies';
 import { getServices, Service, createService } from '@/api/services';
 import { getInvoices, Invoice, createInvoice } from '@/api/invoices';
 import { getAgents, Agent } from '@/agents/api';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { supabase } from '@/lib/supabaseClient';
 
 interface CombinedData {
   company: Company;
@@ -42,18 +44,39 @@ interface CombinedData {
   activeServices: number;
 }
 
+interface CompanyPlan {
+  id: string;
+  plan_tier: string;
+  monthly_limit_usd: number;
+  is_active: boolean;
+  features: any;
+}
+
+interface CompanyWithPlan extends Company {
+  plan?: CompanyPlan;
+  usage?: {
+    totalCost: number;
+    totalTokens: number;
+    totalRequests: number;
+  };
+}
+
 const AdminPortal: React.FC = () => {
   const { user, profile } = useUser();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [companyPlans, setCompanyPlans] = useState<CompanyPlan[]>([]);
+  const [companiesWithPlans, setCompaniesWithPlans] = useState<CompanyWithPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [showAddServiceModal, setShowAddServiceModal] = useState(false);
   const [showIssueInvoiceModal, setShowIssueInvoiceModal] = useState(false);
+  const [showCompanyDetailsModal, setShowCompanyDetailsModal] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<CompanyWithPlan | null>(null);
 
   // Form states
   const [newClient, setNewClient] = useState({ name: '', email: '', phone: '' });
@@ -92,6 +115,11 @@ const AdminPortal: React.FC = () => {
 
         if (agentsResponse.error) setError(`Failed to load agents: ${agentsResponse.error}`);
         else setAgents(agentsResponse.data as Agent[]);
+
+        // Load company plans and usage data
+        if (companiesResponse.data) {
+          await loadCompanyPlansAndUsage(companiesResponse.data as Company[]);
+        }
       } catch (err) {
         setError('An unexpected error occurred while loading data');
         console.error('Error loading admin portal data:', err);
@@ -102,6 +130,59 @@ const AdminPortal: React.FC = () => {
 
     loadData();
   }, []);
+
+  const loadCompanyPlansAndUsage = async (companiesData: Company[]) => {
+    try {
+      const companiesWithDetails = await Promise.all(
+        companiesData.map(async (company) => {
+          // Get company plan
+          const { data: plan } = await supabase
+            .from('company_plans')
+            .select('*')
+            .eq('company_id', company.id)
+            .eq('is_active', true)
+            .single();
+
+          // Get current month usage
+          const startOfMonth = new Date();
+          startOfMonth.setDate(1);
+          startOfMonth.setHours(0, 0, 0, 0);
+
+          const { data: usage } = await supabase
+            .from('api_usage')
+            .select('cost, tokens_used, requests_count')
+            .eq('company_id', company.id)
+            .gte('date', startOfMonth.toISOString().split('T')[0]);
+
+          let totalCost = 0;
+          let totalTokens = 0;
+          let totalRequests = 0;
+
+          if (usage) {
+            usage.forEach((item) => {
+              totalCost += item.cost || 0;
+              totalTokens += item.tokens_used || 0;
+              totalRequests += item.requests_count || 0;
+            });
+          }
+
+          return {
+            ...company,
+            plan,
+            usage: {
+              totalCost,
+              totalTokens,
+              totalRequests,
+            },
+          };
+        }),
+      );
+
+      setCompaniesWithPlans(companiesWithDetails);
+    } catch (err) {
+      console.error('Error loading company details:', err);
+    }
+  };
 
   const handleAddClient = async () => {
     try {
@@ -254,14 +335,14 @@ const AdminPortal: React.FC = () => {
               )}
             </div>
 
-            {/* KPIs Dashboard */}
+            {/* Overall KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <div className="bg-white/5 rounded-lg p-6 border border-white/10">
                 <div className="flex items-center gap-3 mb-4">
                   <Building className="w-8 h-8 text-cosmic-accent" />
                   <div>
                     <p className="text-sm text-cosmic-accent">Total Clients</p>
-                    <p className="text-2xl font-bold text-white">{totalClients}</p>
+                    <p className="text-2xl font-bold text-white">{companies.length}</p>
                   </div>
                 </div>
               </div>
@@ -271,7 +352,7 @@ const AdminPortal: React.FC = () => {
                   <Settings className="w-8 h-8 text-green-400" />
                   <div>
                     <p className="text-sm text-cosmic-accent">Total Services</p>
-                    <p className="text-2xl font-bold text-white">{totalServices}</p>
+                    <p className="text-2xl font-bold text-white">{services.length}</p>
                   </div>
                 </div>
               </div>
@@ -296,120 +377,300 @@ const AdminPortal: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Button
-                onClick={() => setShowAddClientModal(true)}
-                className="bg-cosmic-accent hover:bg-cosmic-accent/80 text-white h-16 text-lg font-semibold"
-              >
-                <Plus className="w-6 h-6 mr-2" />
-                Add Client
-              </Button>
-
-              <Button
-                onClick={() => setShowAddServiceModal(true)}
-                className="bg-green-600 hover:bg-green-700 text-white h-16 text-lg font-semibold"
-              >
-                <Settings className="w-6 h-6 mr-2" />
-                Add Service
-              </Button>
-
-              <Button
-                onClick={() => setShowIssueInvoiceModal(true)}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white h-16 text-lg font-semibold"
-              >
-                <Receipt className="w-6 h-6 mr-2" />
-                Issue Invoice
-              </Button>
-            </div>
           </div>
 
-          {/* Overview DataTable */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
-            <div className="p-6 border-b border-white/10">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white">Clients & Services Overview</h2>
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cosmic-accent w-4 h-4" />
-                    <Input
-                      placeholder="Search clients or services..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 bg-white/5 border-white/20 text-white placeholder-cosmic-accent w-64"
-                    />
+          {/* Main Content Tabs */}
+          <Tabs defaultValue="companies" className="w-full">
+            <TabsList className="grid w-full grid-cols-4 bg-white/10">
+              <TabsTrigger value="companies" className="data-[state=active]:bg-cosmic-accent">
+                Companies
+              </TabsTrigger>
+              <TabsTrigger value="services" className="data-[state=active]:bg-cosmic-accent">
+                Services
+              </TabsTrigger>
+              <TabsTrigger value="billing" className="data-[state=active]:bg-cosmic-accent">
+                Billing
+              </TabsTrigger>
+              <TabsTrigger value="agents" className="data-[state=active]:bg-cosmic-accent">
+                Agents
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Companies Tab */}
+            <TabsContent value="companies" className="space-y-6">
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
+                <div className="p-6 border-b border-white/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-white">Company Management</h2>
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cosmic-accent w-4 h-4" />
+                        <Input
+                          placeholder="Search companies..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10 bg-white/5 border-white/20 text-white placeholder-cosmic-accent w-64"
+                        />
+                      </div>
+                      <Button
+                        onClick={() => setShowAddClientModal(true)}
+                        className="bg-cosmic-accent hover:bg-cosmic-accent/80 text-white"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Company
+                      </Button>
+                    </div>
                   </div>
-                  <Button variant="outline" className="border-white/20 text-white">
-                    <Filter className="w-4 h-4 mr-2" />
-                    Filter
-                  </Button>
+                </div>
+
+                <div className="p-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/10">
+                        <TableHead className="text-cosmic-accent">Company Name</TableHead>
+                        <TableHead className="text-cosmic-accent">Plan</TableHead>
+                        <TableHead className="text-cosmic-accent">Monthly Usage</TableHead>
+                        <TableHead className="text-cosmic-accent">Budget Status</TableHead>
+                        <TableHead className="text-cosmic-accent">Stripe Status</TableHead>
+                        <TableHead className="text-cosmic-accent">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {companiesWithPlans
+                        .filter((company) =>
+                          company.name.toLowerCase().includes(searchTerm.toLowerCase()),
+                        )
+                        .map((company) => (
+                          <TableRow key={company.id} className="border-white/10">
+                            <TableCell className="text-white font-medium">{company.name}</TableCell>
+                            <TableCell>
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white bg-blue-500">
+                                {company.plan?.plan_tier || 'starter'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-cosmic-accent">
+                              ${company.usage?.totalCost.toFixed(2) || '0.00'}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${
+                                  (company.usage?.totalCost || 0) >
+                                  (company.plan?.monthly_limit_usd || 100) * 0.8
+                                    ? 'bg-red-500'
+                                    : 'bg-green-500'
+                                }`}
+                              >
+                                {(
+                                  ((company.usage?.totalCost || 0) /
+                                    (company.plan?.monthly_limit_usd || 100)) *
+                                  100
+                                ).toFixed(0)}
+                                %
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${
+                                  company.stripe_customer_id ? 'bg-green-500' : 'bg-gray-500'
+                                }`}
+                              >
+                                {company.stripe_customer_id ? 'Connected' : 'Not Connected'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-white/20 text-white"
+                                  onClick={() => {
+                                    setSelectedCompany(company);
+                                    setShowCompanyDetailsModal(true);
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
-            </div>
+            </TabsContent>
 
-            <div className="p-6">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-white/10">
-                    <TableHead className="text-cosmic-accent">Client Name</TableHead>
-                    <TableHead className="text-cosmic-accent">Active Services</TableHead>
-                    <TableHead className="text-cosmic-accent">Total Services</TableHead>
-                    <TableHead className="text-cosmic-accent">Total Revenue</TableHead>
-                    <TableHead className="text-cosmic-accent">Created</TableHead>
-                    <TableHead className="text-cosmic-accent">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredData.map((item) => (
-                    <TableRow key={item.company.id} className="border-white/10">
-                      <TableCell className="text-white font-medium">{item.company.name}</TableCell>
-                      <TableCell>
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white bg-green-500">
-                          {item.activeServices} active
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-cosmic-accent">
-                        {item.services.length} total
-                      </TableCell>
-                      <TableCell className="text-white font-medium">
-                        ${item.totalRevenue.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-cosmic-accent">
-                        {new Date(item.company.created_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-white/20 text-white"
-                          >
-                            View Details
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-white/20 text-white"
-                          >
-                            Manage
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              {filteredData.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-cosmic-accent">
-                    {searchTerm ? 'No results found for your search.' : 'No clients found.'}
-                  </p>
+            {/* Services Tab */}
+            <TabsContent value="services" className="space-y-6">
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
+                <div className="p-6 border-b border-white/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-white">Services Management</h2>
+                    <Button
+                      onClick={() => setShowAddServiceModal(true)}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Service
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
+
+                <div className="p-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/10">
+                        <TableHead className="text-cosmic-accent">Service Name</TableHead>
+                        <TableHead className="text-cosmic-accent">Company</TableHead>
+                        <TableHead className="text-cosmic-accent">Billing Type</TableHead>
+                        <TableHead className="text-cosmic-accent">Price</TableHead>
+                        <TableHead className="text-cosmic-accent">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {services.map((service) => {
+                        const company = companies.find((c) => c.id === service.company_id);
+                        return (
+                          <TableRow key={service.id} className="border-white/10">
+                            <TableCell className="text-white font-medium">{service.name}</TableCell>
+                            <TableCell className="text-cosmic-accent">
+                              {company?.name || 'Unknown'}
+                            </TableCell>
+                            <TableCell className="text-cosmic-accent">
+                              {service.billing_type}
+                            </TableCell>
+                            <TableCell className="text-white font-medium">
+                              ${service.price}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${
+                                  service.status === 'active' ? 'bg-green-500' : 'bg-gray-500'
+                                }`}
+                              >
+                                {service.status}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Billing Tab */}
+            <TabsContent value="billing" className="space-y-6">
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
+                <div className="p-6 border-b border-white/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-white">Billing & Invoices</h2>
+                    <Button
+                      onClick={() => setShowIssueInvoiceModal(true)}
+                      className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                    >
+                      <Receipt className="w-4 h-4 mr-2" />
+                      Issue Invoice
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/10">
+                        <TableHead className="text-cosmic-accent">Invoice #</TableHead>
+                        <TableHead className="text-cosmic-accent">Company</TableHead>
+                        <TableHead className="text-cosmic-accent">Amount</TableHead>
+                        <TableHead className="text-cosmic-accent">Due Date</TableHead>
+                        <TableHead className="text-cosmic-accent">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {invoices.map((invoice) => {
+                        const company = companies.find((c) => c.id === invoice.company_id);
+                        return (
+                          <TableRow key={invoice.id} className="border-white/10">
+                            <TableCell className="text-white font-medium">
+                              {invoice.id.slice(0, 8)}
+                            </TableCell>
+                            <TableCell className="text-cosmic-accent">
+                              {company?.name || 'Unknown'}
+                            </TableCell>
+                            <TableCell className="text-white font-medium">
+                              ${invoice.amount}
+                            </TableCell>
+                            <TableCell className="text-cosmic-accent">
+                              {new Date(invoice.due_date).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${
+                                  invoice.status === 'paid'
+                                    ? 'bg-green-500'
+                                    : invoice.status === 'overdue'
+                                    ? 'bg-red-500'
+                                    : 'bg-yellow-500'
+                                }`}
+                              >
+                                {invoice.status}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Agents Tab */}
+            <TabsContent value="agents" className="space-y-6">
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
+                <div className="p-6 border-b border-white/10">
+                  <h2 className="text-2xl font-bold text-white">AI Agents Management</h2>
+                </div>
+
+                <div className="p-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/10">
+                        <TableHead className="text-cosmic-accent">Agent Name</TableHead>
+                        <TableHead className="text-cosmic-accent">Role</TableHead>
+                        <TableHead className="text-cosmic-accent">Status</TableHead>
+                        <TableHead className="text-cosmic-accent">Company</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {agents.map((agent) => {
+                        const company = companies.find((c) => c.id === agent.company_id);
+                        return (
+                          <TableRow key={agent.id} className="border-white/10">
+                            <TableCell className="text-white font-medium">{agent.name}</TableCell>
+                            <TableCell className="text-cosmic-accent">{agent.role}</TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${
+                                  agent.status === 'active' ? 'bg-green-500' : 'bg-gray-500'
+                                }`}
+                              >
+                                {agent.status}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-cosmic-accent">
+                              {company?.name || 'System'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
@@ -679,6 +940,115 @@ const AdminPortal: React.FC = () => {
               >
                 Cancel
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company Details Modal */}
+      {showCompanyDetailsModal && selectedCompany && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 border border-white/20 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-white">
+                {selectedCompany.name} - Company Details
+              </h3>
+              <Button
+                onClick={() => setShowCompanyDetailsModal(false)}
+                variant="outline"
+                className="border-white/20 text-white"
+              >
+                ✕
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {/* Plan Information */}
+              <div className="bg-white/5 rounded-lg p-6 border border-white/10">
+                <h4 className="text-white font-semibold mb-4">Plan Information</h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-cosmic-accent">Current Plan:</span>
+                    <span className="text-white">
+                      {selectedCompany.plan?.plan_tier || 'starter'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cosmic-accent">Monthly Limit:</span>
+                    <span className="text-white">
+                      ${selectedCompany.plan?.monthly_limit_usd || 100}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cosmic-accent">Plan Status:</span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${
+                        selectedCompany.plan?.is_active ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                    >
+                      {selectedCompany.plan?.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Usage Statistics */}
+              <div className="bg-white/5 rounded-lg p-6 border border-white/10">
+                <h4 className="text-white font-semibold mb-4">Current Month Usage</h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-cosmic-accent">API Cost:</span>
+                    <span className="text-white">
+                      ${selectedCompany.usage?.totalCost.toFixed(2) || '0.00'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cosmic-accent">Tokens Used:</span>
+                    <span className="text-white">{selectedCompany.usage?.totalTokens || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cosmic-accent">API Requests:</span>
+                    <span className="text-white">{selectedCompany.usage?.totalRequests || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-cosmic-accent">Budget Used:</span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${
+                        (selectedCompany.usage?.totalCost || 0) >
+                        (selectedCompany.plan?.monthly_limit_usd || 100) * 0.8
+                          ? 'bg-red-500'
+                          : 'bg-green-500'
+                      }`}
+                    >
+                      {(
+                        ((selectedCompany.usage?.totalCost || 0) /
+                          (selectedCompany.plan?.monthly_limit_usd || 100)) *
+                        100
+                      ).toFixed(0)}
+                      %
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Stripe Information */}
+            <div className="bg-white/5 rounded-lg p-6 border border-white/10 mb-6">
+              <h4 className="text-white font-semibold mb-4">Stripe Integration</h4>
+              <div className="flex justify-between items-center">
+                <span className="text-cosmic-accent">Customer ID:</span>
+                <span className="text-white font-mono text-sm">
+                  {selectedCompany.stripe_customer_id || 'Not connected'}
+                </span>
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-white/5 rounded-lg p-6 border border-white/10">
+              <h4 className="text-white font-semibold mb-4">Recent Activity</h4>
+              <div className="text-cosmic-accent">
+                Activity tracking will be implemented in the next update
+              </div>
             </div>
           </div>
         </div>

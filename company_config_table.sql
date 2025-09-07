@@ -69,5 +69,36 @@ INSERT INTO public.company_config (key, value, description, category, is_enabled
     'Configuration for Tasker webhook integration',
     'integrations',
     false
+  ),
+  (
+    'monthly_budget_usd',
+    '100.00'::jsonb,
+    'Monthly API budget limit in USD',
+    'billing',
+    true
+  ),
+  (
+    'current_spend_usd',
+    '0.00'::jsonb,
+    'Current month API spend in USD',
+    'billing',
+    true
+  ),
+  (
+    'alerts_enabled',
+    'true'::jsonb,
+    'Enable budget alerts and notifications',
+    'billing',
+    true
+  ),
+  (
+    'alert_thresholds',
+    '{
+      "warning": 80,
+      "critical": 95
+    }'::jsonb,
+    'Budget alert thresholds as percentages',
+    'billing',
+    true
   )
 ON CONFLICT (key) DO NOTHING;

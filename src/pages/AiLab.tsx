@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { routeTask, getAgents, updateAgent, type Agent, type TaskResult } from '@/agents';
+import { getAgents, updateAgent, type Agent } from '@/agents';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -8,59 +11,53 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { MessageSquare, Users, Edit, Ban, CheckCircle, XCircle, Plus } from 'lucide-react';
-import AgentConfigModal from '@/components/AgentConfigModal';
-
-interface ChatMessage {
-  id: string;
-  agentName: string;
-  agentRole: string;
-  message: string;
-  timestamp: Date;
-  isUser?: boolean;
-}
-
-interface MeetingTranscript {
-  id: string;
-  question: string;
-  responses: ChatMessage[];
-  chiefSummary?: string;
-  timestamp: Date;
-}
+  MessageSquare,
+  Users,
+  Edit,
+  Ban,
+  CheckCircle,
+  XCircle,
+  Plus,
+  Search,
+  Filter,
+  Bot,
+  User,
+  Settings,
+  History,
+} from 'lucide-react';
+import AgentForm from '@/components/AgentForm';
+import AgentConsole from '@/components/AgentConsole';
+import SOPGenerator from '@/components/SOPGenerator';
 
 const AiLab: React.FC = () => {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [filteredAgents, setFilteredAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
-  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
 
-  // Chat states
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
+  // Modals and forms
+  const [createAgentOpen, setCreateAgentOpen] = useState(false);
+  const [editAgentOpen, setEditAgentOpen] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
 
   // Meeting states
+  const [meetingOpen, setMeetingOpen] = useState(false);
   const [meetingQuestion, setMeetingQuestion] = useState('');
-  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  const [meetingTranscript, setMeetingTranscript] = useState<MeetingTranscript | null>(null);
+  const [selectedAgentsForMeeting, setSelectedAgentsForMeeting] = useState<string[]>([]);
   const [meetingLoading, setMeetingLoading] = useState(false);
-  const [summarizing, setSummarizing] = useState(false);
 
   useEffect(() => {
     loadAgents();
   }, []);
+
+  useEffect(() => {
+    filterAgents();
+  }, [agents, searchQuery, statusFilter, roleFilter]);
 
   const loadAgents = async () => {
     try {
@@ -75,167 +72,46 @@ const AiLab: React.FC = () => {
     }
   };
 
-  const handleChat = async () => {
-    if (!selectedAgent || !chatInput.trim()) return;
+  const filterAgents = () => {
+    let filtered = [...agents];
 
-    setChatLoading(true);
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      agentName: 'You',
-      agentRole: 'user',
-      message: chatInput,
-      timestamp: new Date(),
-      isUser: true,
-    };
-
-    setChatMessages((prev) => [...prev, userMessage]);
-    setChatInput('');
-
-    try {
-      const result = await routeTask(selectedAgent.role, chatInput);
-
-      const agentMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        agentName: selectedAgent.name,
-        agentRole: selectedAgent.role,
-        message: result.response || 'No response received',
-        timestamp: new Date(),
-      };
-
-      setChatMessages((prev) => [...prev, agentMessage]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        agentName: selectedAgent.name,
-        agentRole: selectedAgent.role,
-        message: 'Sorry, I encountered an error processing your request.',
-        timestamp: new Date(),
-      };
-      setChatMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setChatLoading(false);
-    }
-  };
-
-  const handleMeeting = async () => {
-    if (!meetingQuestion.trim() || selectedAgents.length === 0) return;
-
-    setMeetingLoading(true);
-
-    const meetingId = Date.now().toString();
-    const responses: ChatMessage[] = [];
-
-    // Get responses from selected agents
-    for (const agentRole of selectedAgents) {
-      try {
-        const result = await routeTask(agentRole, meetingQuestion);
-
-        const agent = agents.find((a) => a.role === agentRole);
-        if (agent && result.success) {
-          const response: ChatMessage = {
-            id: `${meetingId}-${agentRole}`,
-            agentName: agent.name,
-            agentRole: agent.role,
-            message: result.response,
-            timestamp: new Date(),
-          };
-          responses.push(response);
-        }
-      } catch (error) {
-        console.error(`Error getting response from ${agentRole}:`, error);
-      }
+    // Search filter
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (agent) =>
+          agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          agent.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          agent.description?.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
     }
 
-    const transcript: MeetingTranscript = {
-      id: meetingId,
-      question: meetingQuestion,
-      responses,
-      timestamp: new Date(),
-    };
-
-    setMeetingTranscript(transcript);
-
-    // Auto-summarize with Chief if available
-    await summarizeMeeting(transcript);
-
-    setMeetingLoading(false);
-  };
-
-  const summarizeMeeting = async (transcript: MeetingTranscript) => {
-    setSummarizing(true);
-    try {
-      const chiefAvailable = agents.some((agent) => agent.role.toLowerCase() === 'chief');
-      if (chiefAvailable) {
-        const summaryPrompt = `Please summarize the following meeting discussion:\n\nQuestion: ${
-          transcript.question
-        }\n\nResponses:\n${transcript.responses
-          .map((r) => `${r.agentName} (${r.agentRole}): ${r.message}`)
-          .join('\n\n')}`;
-
-        const summaryResult = await routeTask('chief', summaryPrompt);
-        if (summaryResult.success) {
-          setMeetingTranscript((prev) =>
-            prev ? { ...prev, chiefSummary: summaryResult.response } : null,
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Error summarizing meeting:', error);
-    } finally {
-      setSummarizing(false);
+    // Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((agent) => agent.status === statusFilter);
     }
-  };
 
-  const saveTranscript = async () => {
-    if (!meetingTranscript) return;
-
-    try {
-      const { error } = await supabase.from('meeting_logs').insert([
-        {
-          transcript: {
-            id: meetingTranscript.id,
-            question: meetingTranscript.question,
-            responses: meetingTranscript.responses.map((r) => ({
-              agentName: r.agentName,
-              agentRole: r.agentRole,
-              message: r.message,
-              timestamp: r.timestamp.toISOString(),
-            })),
-            chiefSummary: meetingTranscript.chiefSummary,
-            timestamp: meetingTranscript.timestamp.toISOString(),
-          },
-        },
-      ]);
-
-      if (error) throw error;
-
-      alert('Meeting transcript saved successfully!');
-    } catch (error) {
-      console.error('Error saving transcript:', error);
-      alert('Failed to save transcript.');
+    // Role filter
+    if (roleFilter !== 'all') {
+      filtered = filtered.filter((agent) => agent.role === roleFilter);
     }
+
+    setFilteredAgents(filtered);
   };
 
   const handleCreateAgent = () => {
     setEditingAgent(null);
-    setConfigModalOpen(true);
+    setCreateAgentOpen(true);
   };
 
   const handleEditAgent = (agent: Agent) => {
     setEditingAgent(agent);
-    setConfigModalOpen(true);
+    setEditAgentOpen(true);
   };
 
-  const handleConfigModalSuccess = async () => {
+  const handleAgentFormSuccess = async () => {
     await loadAgents();
-    setConfigModalOpen(false);
-    setEditingAgent(null);
-  };
-
-  const handleConfigModalClose = () => {
-    setConfigModalOpen(false);
+    setCreateAgentOpen(false);
+    setEditAgentOpen(false);
     setEditingAgent(null);
   };
 
@@ -254,260 +130,316 @@ const AiLab: React.FC = () => {
     }
   };
 
-  const toggleAgentSelection = (agentRole: string) => {
-    setSelectedAgents((prev) =>
-      prev.includes(agentRole) ? prev.filter((role) => role !== agentRole) : [...prev, agentRole],
+  const getUniqueRoles = () => {
+    const roles = agents.map((agent) => agent.role);
+    return [...new Set(roles)].sort();
+  };
+
+  const getStatusColor = (status: string) => {
+    return status === 'active' ? 'text-green-400' : 'text-red-400';
+  };
+
+  const getStatusIcon = (status: string) => {
+    return status === 'active' ? (
+      <CheckCircle className="w-4 h-4" />
+    ) : (
+      <XCircle className="w-4 h-4" />
     );
   };
 
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="text-white">Loading agents...</div>
+        <div className="text-white text-xl">Loading AI Lab...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-white">AI Lab</h1>
-        <div className="flex space-x-3">
-          <Button
-            onClick={handleCreateAgent}
-            className="bg-cosmic-accent hover:bg-cosmic-highlight"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create Agent
-          </Button>
-          <Button onClick={() => setMeetingOpen(true)} variant="outline">
-            <Users className="w-4 h-4 mr-2" />
-            Meeting Mode
-          </Button>
+    <div className="h-screen flex flex-col bg-cosmic-dark">
+      {/* Header */}
+      <div className="p-6 border-b border-cosmic-light">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-white">AI Agent Builder & Hub</h1>
+            <p className="text-gray-400 mt-1">
+              Create, configure, and interact with AI agents powered by advanced LLMs
+            </p>
+          </div>
+          <div className="flex space-x-3">
+            <Button
+              onClick={handleCreateAgent}
+              className="bg-cosmic-accent hover:bg-cosmic-highlight"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create Agent
+            </Button>
+            <Button onClick={() => setMeetingOpen(true)} variant="outline">
+              <Users className="w-4 h-4 mr-2" />
+              Multi-Agent Meeting
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Agents Table */}
-      <div className="bg-cosmic-dark rounded-lg border border-cosmic-light overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-white">Name</TableHead>
-              <TableHead className="text-white">Role</TableHead>
-              <TableHead className="text-white">Status</TableHead>
-              <TableHead className="text-white">LLM Provider</TableHead>
-              <TableHead className="text-white">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {agents.map((agent) => (
-              <TableRow key={agent.id}>
-                <TableCell className="text-white">{agent.name}</TableCell>
-                <TableCell className="text-white">{agent.role}</TableCell>
-                <TableCell>
-                  <span
-                    className={`flex items-center ${
-                      agent.status === 'active' ? 'text-green-400' : 'text-red-400'
-                    }`}
-                  >
-                    {agent.status === 'active' ? (
-                      <CheckCircle className="w-4 h-4 mr-1" />
-                    ) : (
-                      <XCircle className="w-4 h-4 mr-1" />
-                    )}
-                    {agent.status}
-                  </span>
-                </TableCell>
-                <TableCell className="text-white">{agent.llm_provider || 'Not set'}</TableCell>
-                <TableCell>
-                  <div className="flex space-x-2">
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setSelectedAgent(agent);
-                        setChatOpen(true);
-                      }}
-                      disabled={agent.status !== 'active'}
-                    >
-                      <MessageSquare className="w-4 h-4" />
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleEditAgent(agent)}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleToggleAgentStatus(agent)}
-                    >
-                      <Ban className="w-4 h-4" />
-                    </Button>
+      {/* Main Content */}
+      <Tabs defaultValue="agents" className="flex-1 flex flex-col">
+        <TabsList className="grid w-full grid-cols-2 mx-6 mt-4">
+          <TabsTrigger value="agents">Agent Management</TabsTrigger>
+          <TabsTrigger value="sop">SOP Generator</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="agents" className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left Panel - Agent List & Management */}
+            <div className="w-1/3 border-r border-cosmic-light flex flex-col">
+              {/* Search and Filters */}
+              <div className="p-4 border-b border-cosmic-light">
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="search" className="text-white text-sm">
+                      Search Agents
+                    </Label>
+                    <div className="relative mt-1">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="search"
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by name, role, or description..."
+                        className="pl-10 bg-cosmic-light text-white border-cosmic-accent"
+                      />
+                    </div>
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
 
-      {/* Chat Dialog */}
-      <Dialog open={chatOpen} onOpenChange={setChatOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle className="text-white">
-              Chat with {selectedAgent?.name} ({selectedAgent?.role})
-            </DialogTitle>
-          </DialogHeader>
+                  <div className="flex space-x-2">
+                    <div className="flex-1">
+                      <Label htmlFor="status-filter" className="text-white text-sm">
+                        Status
+                      </Label>
+                      <select
+                        id="status-filter"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        className="w-full mt-1 p-2 bg-cosmic-light text-white border border-cosmic-accent rounded text-sm"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
 
-          <div className="flex flex-col h-96">
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-cosmic-dark rounded">
-              {chatMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.isUser ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[70%] p-3 rounded-lg ${
-                      msg.isUser ? 'bg-cosmic-accent text-white' : 'bg-cosmic-light text-white'
-                    }`}
-                  >
-                    <div className="font-semibold text-sm">{msg.agentName}</div>
-                    <div className="text-sm mt-1">{msg.message}</div>
-                    <div className="text-xs opacity-70 mt-2">
-                      {msg.timestamp.toLocaleTimeString()}
+                    <div className="flex-1">
+                      <Label htmlFor="role-filter" className="text-white text-sm">
+                        Role
+                      </Label>
+                      <select
+                        id="role-filter"
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value)}
+                        className="w-full mt-1 p-2 bg-cosmic-light text-white border border-cosmic-accent rounded text-sm"
+                      >
+                        <option value="all">All Roles</option>
+                        {getUniqueRoles().map((role) => (
+                          <option key={role} value={role}>
+                            {role.replace('_', ' ')}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
-              ))}
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-cosmic-light p-3 rounded-lg">
-                    <div className="text-white text-sm">Thinking...</div>
+              </div>
+
+              {/* Agent List */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="space-y-3">
+                  {filteredAgents.map((agent) => (
+                    <div
+                      key={agent.id}
+                      className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                        selectedAgent?.id === agent.id
+                          ? 'border-cosmic-accent bg-cosmic-accent/10'
+                          : 'border-cosmic-light bg-cosmic-dark hover:border-cosmic-accent/50'
+                      }`}
+                      onClick={() => setSelectedAgent(agent)}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="text-white font-semibold">{agent.name}</h3>
+                          <p className="text-gray-400 text-sm capitalize">
+                            {agent.role.replace('_', ' ')}
+                          </p>
+                        </div>
+                        <div className={`flex items-center ${getStatusColor(agent.status)}`}>
+                          {getStatusIcon(agent.status)}
+                          <span className="text-xs ml-1 capitalize">{agent.status}</span>
+                        </div>
+                      </div>
+
+                      {agent.description && (
+                        <p className="text-gray-300 text-sm mb-3 line-clamp-2">
+                          {agent.description}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {agent.capabilities_json?.slice(0, 3).map((cap: string) => (
+                          <span
+                            key={cap}
+                            className="text-xs bg-cosmic-accent/20 text-cosmic-accent px-2 py-1 rounded"
+                          >
+                            {cap.replace('_', ' ')}
+                          </span>
+                        ))}
+                        {agent.capabilities_json && agent.capabilities_json.length > 3 && (
+                          <span className="text-xs text-gray-400">
+                            +{agent.capabilities_json.length - 3} more
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <div className="text-xs text-gray-400">
+                          {agent.llm_provider && (
+                            <span className="capitalize">{agent.llm_provider}</span>
+                          )}
+                        </div>
+                        <div className="flex space-x-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditAgent(agent);
+                            }}
+                            className="text-gray-400 hover:text-white p-1"
+                          >
+                            <Settings className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleAgentStatus(agent);
+                            }}
+                            className="text-gray-400 hover:text-white p-1"
+                          >
+                            <Ban className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {filteredAgents.length === 0 && (
+                    <div className="text-center py-8 text-gray-400">
+                      <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No agents found matching your criteria.</p>
+                      <Button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setStatusFilter('all');
+                          setRoleFilter('all');
+                        }}
+                        variant="outline"
+                        className="mt-3"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Agent Stats */}
+              <div className="p-4 border-t border-cosmic-light">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-white">{agents.length}</div>
+                    <div className="text-xs text-gray-400">Total Agents</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-green-400">
+                      {agents.filter((a) => a.status === 'active').length}
+                    </div>
+                    <div className="text-xs text-gray-400">Active</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-blue-400">
+                      {getUniqueRoles().length}
+                    </div>
+                    <div className="text-xs text-gray-400">Roles</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Panel - Agent Console */}
+            <div className="flex-1 flex flex-col">
+              {selectedAgent ? (
+                <AgentConsole agent={selectedAgent} userId="user-123" />
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center text-gray-400">
+                    <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                    <h3 className="text-xl font-semibold text-white mb-2">
+                      Select an Agent to Start
+                    </h3>
+                    <p className="max-w-md">
+                      Choose an agent from the list to begin chatting, running tasks, or accessing
+                      specialized capabilities.
+                    </p>
                   </div>
                 </div>
               )}
             </div>
-
-            <div className="flex mt-4 space-x-2">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleChat()}
-                placeholder="Type your message..."
-                className="flex-1 p-2 bg-cosmic-light text-white rounded border border-cosmic-accent"
-                disabled={chatLoading}
-              />
-              <Button onClick={handleChat} disabled={chatLoading || !chatInput.trim()}>
-                Send
-              </Button>
-            </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="sop" className="flex-1">
+          <SOPGenerator />
+        </TabsContent>
+      </Tabs>
+
+      {/* Create Agent Modal */}
+      <Dialog open={createAgentOpen} onOpenChange={setCreateAgentOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <AgentForm
+            onSuccess={handleAgentFormSuccess}
+            onCancel={() => setCreateAgentOpen(false)}
+          />
         </DialogContent>
       </Dialog>
 
-      {/* Agent Configuration Modal */}
-      <AgentConfigModal
-        isOpen={configModalOpen}
-        onClose={handleConfigModalClose}
-        agent={editingAgent}
-        onSuccess={handleConfigModalSuccess}
-      />
+      {/* Edit Agent Modal */}
+      <Dialog open={editAgentOpen} onOpenChange={setEditAgentOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <AgentForm
+            agent={editingAgent}
+            onSuccess={handleAgentFormSuccess}
+            onCancel={() => setEditAgentOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
-      {/* Meeting Mode Dialog */}
+      {/* Multi-Agent Meeting Modal - Placeholder for now */}
       <Dialog open={meetingOpen} onOpenChange={setMeetingOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle className="text-white">AI Meeting Mode</DialogTitle>
-          </DialogHeader>
-
-          <div className="flex space-x-4 h-96">
-            {/* Agent Selection */}
-            <div className="w-1/3 bg-cosmic-dark p-4 rounded">
-              <h3 className="text-white font-semibold mb-3">Select Agents</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {agents
-                  .filter((agent) => agent.status === 'active')
-                  .map((agent) => (
-                    <label key={agent.id} className="flex items-center space-x-2 text-white">
-                      <input
-                        type="checkbox"
-                        checked={selectedAgents.includes(agent.role)}
-                        onChange={() => toggleAgentSelection(agent.role)}
-                        className="rounded"
-                      />
-                      <span>
-                        {agent.name} ({agent.role})
-                      </span>
-                    </label>
-                  ))}
-              </div>
-            </div>
-
-            {/* Meeting Interface */}
-            <div className="flex-1 flex flex-col">
-              <div className="mb-4">
-                <textarea
-                  value={meetingQuestion}
-                  onChange={(e) => setMeetingQuestion(e.target.value)}
-                  placeholder="Enter your question for the meeting..."
-                  className="w-full p-3 bg-cosmic-light text-white rounded h-24 resize-none"
-                />
-                <Button
-                  onClick={handleMeeting}
-                  disabled={
-                    meetingLoading || !meetingQuestion.trim() || selectedAgents.length === 0
-                  }
-                  className="mt-2 bg-cosmic-accent hover:bg-cosmic-highlight"
-                >
-                  {meetingLoading ? 'Processing...' : 'Start Meeting'}
-                </Button>
-              </div>
-
-              {/* Meeting Transcript */}
-              <div className="flex-1 bg-cosmic-dark p-4 rounded overflow-y-auto">
-                {meetingTranscript ? (
-                  <div className="space-y-4">
-                    <div className="border-b border-cosmic-light pb-2">
-                      <h4 className="text-white font-semibold">Question:</h4>
-                      <p className="text-white mt-1">{meetingTranscript.question}</p>
-                    </div>
-
-                    <div>
-                      <h4 className="text-white font-semibold mb-2">Responses:</h4>
-                      <div className="space-y-3">
-                        {meetingTranscript.responses.map((response) => (
-                          <div key={response.id} className="bg-cosmic-light p-3 rounded">
-                            <div className="font-semibold text-white">
-                              {response.agentName} ({response.agentRole})
-                            </div>
-                            <div className="text-white text-sm mt-1">{response.message}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {meetingTranscript.chiefSummary && (
-                      <div className="border-t border-cosmic-light pt-4">
-                        <h4 className="text-white font-semibold mb-2">Chief Summary:</h4>
-                        <div className="bg-cosmic-accent p-3 rounded text-white">
-                          {summarizing ? 'Generating summary...' : meetingTranscript.chiefSummary}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex justify-end">
-                      <Button onClick={saveTranscript} variant="outline">
-                        Save Transcript
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-white text-center opacity-50">
-                    Select agents and enter a question to start a meeting
-                  </div>
-                )}
-              </div>
-            </div>
+        <DialogContent className="max-w-4xl">
+          <div className="text-center py-8">
+            <Users className="w-16 h-16 mx-auto mb-4 text-cosmic-accent" />
+            <h3 className="text-xl font-semibold text-white mb-2">Multi-Agent Meeting</h3>
+            <p className="text-gray-400 mb-4">
+              This feature allows multiple agents to collaborate on complex tasks.
+            </p>
+            <p className="text-sm text-gray-500">
+              Coming soon - Enhanced multi-agent coordination system
+            </p>
+            <Button onClick={() => setMeetingOpen(false)} className="mt-4" variant="outline">
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

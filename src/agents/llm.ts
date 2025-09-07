@@ -2,6 +2,11 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { LLMProvider } from './api';
+import {
+  costCalculators,
+  checkBudgetBeforeAction,
+  logApiUsageAndUpdateBudget,
+} from '@/api/apiUsage';
 
 export interface LLMConfig {
   provider: LLMProvider;
@@ -12,6 +17,18 @@ export interface LLMConfig {
 export interface LLMResponse {
   content: string;
   error?: string;
+  usage?: {
+    tokens_used: number;
+    cost: number;
+    service: string;
+  };
+}
+
+export interface LLMCallOptions {
+  agentId?: string;
+  agentName?: string;
+  skipBudgetCheck?: boolean;
+  skipUsageLogging?: boolean;
 }
 
 /**
@@ -37,15 +54,45 @@ export const getApiKey = (provider: LLMProvider, apiKeyRef?: string): string | n
 };
 
 /**
- * Send message to OpenAI
+ * Send message to OpenAI with budget checking and usage logging
  */
 export const sendOpenAIMessage = async (
   apiKey: string,
   model: string,
   prompt: string,
   task: string,
+  options: LLMCallOptions = {},
 ): Promise<LLMResponse> => {
   try {
+    // Estimate token usage for budget check
+    const estimatedInputTokens = Math.ceil((prompt.length + task.length) / 4); // Rough estimate
+    const estimatedOutputTokens = 2000; // max_tokens setting
+    const costCalc =
+      model.includes('gpt-4') && !model.includes('turbo')
+        ? costCalculators.openai.gpt4(estimatedInputTokens, estimatedOutputTokens)
+        : model.includes('turbo')
+        ? costCalculators.openai.gpt4_turbo(estimatedInputTokens, estimatedOutputTokens)
+        : costCalculators.openai.gpt3_5_turbo(estimatedInputTokens, estimatedOutputTokens);
+
+    // Check budget before proceeding
+    if (!options.skipBudgetCheck) {
+      const budgetCheck = await checkBudgetBeforeAction('OpenAI', costCalc.cost, options.agentId);
+      if (budgetCheck.error) {
+        return {
+          content: '',
+          error: `Budget check failed: ${budgetCheck.error}`,
+        };
+      }
+      if (!budgetCheck.data?.can_proceed) {
+        return {
+          content: '',
+          error: `Budget exceeded. Current spend: $${budgetCheck.data?.current_spend?.toFixed(
+            2,
+          )}, Limit: $${budgetCheck.data?.budget_limit?.toFixed(2)}`,
+        };
+      }
+    }
+
     const openai = new OpenAI({
       apiKey,
       dangerouslyAllowBrowser: true, // Note: In production, this should be handled server-side
@@ -69,7 +116,43 @@ export const sendOpenAIMessage = async (
       };
     }
 
-    return { content };
+    // Calculate actual token usage
+    const actualInputTokens = completion.usage?.prompt_tokens || estimatedInputTokens;
+    const actualOutputTokens = completion.usage?.completion_tokens || estimatedOutputTokens;
+    const actualCostCalc =
+      model.includes('gpt-4') && !model.includes('turbo')
+        ? costCalculators.openai.gpt4(actualInputTokens, actualOutputTokens)
+        : model.includes('turbo')
+        ? costCalculators.openai.gpt4_turbo(actualInputTokens, actualOutputTokens)
+        : costCalculators.openai.gpt3_5_turbo(actualInputTokens, actualOutputTokens);
+
+    // Log usage if not skipped
+    if (!options.skipUsageLogging) {
+      await logApiUsageAndUpdateBudget({
+        service: 'OpenAI',
+        agent_id: options.agentId,
+        agent: options.agentName,
+        description: `LLM call: ${model}`,
+        cost: actualCostCalc.cost,
+        tokens_used: actualCostCalc.tokens_used,
+        metadata: {
+          model,
+          input_tokens: actualInputTokens,
+          output_tokens: actualOutputTokens,
+          prompt_length: prompt.length,
+          task_length: task.length,
+        },
+      });
+    }
+
+    return {
+      content,
+      usage: {
+        tokens_used: actualCostCalc.tokens_used,
+        cost: actualCostCalc.cost,
+        service: 'OpenAI',
+      },
+    };
   } catch (error) {
     console.error('OpenAI API error:', error);
     return {
@@ -80,15 +163,42 @@ export const sendOpenAIMessage = async (
 };
 
 /**
- * Send message to Claude (Anthropic)
+ * Send message to Claude (Anthropic) with budget checking and usage logging
  */
 export const sendClaudeMessage = async (
   apiKey: string,
   model: string,
   prompt: string,
   task: string,
+  options: LLMCallOptions = {},
 ): Promise<LLMResponse> => {
   try {
+    // Estimate token usage for budget check
+    const estimatedInputTokens = Math.ceil((prompt.length + task.length) / 4); // Rough estimate
+    const estimatedOutputTokens = 2000; // max_tokens setting
+    const costCalc = model.includes('sonnet')
+      ? costCalculators.claude.sonnet(estimatedInputTokens, estimatedOutputTokens)
+      : costCalculators.claude.haiku(estimatedInputTokens, estimatedOutputTokens);
+
+    // Check budget before proceeding
+    if (!options.skipBudgetCheck) {
+      const budgetCheck = await checkBudgetBeforeAction('Claude', costCalc.cost, options.agentId);
+      if (budgetCheck.error) {
+        return {
+          content: '',
+          error: `Budget check failed: ${budgetCheck.error}`,
+        };
+      }
+      if (!budgetCheck.data?.can_proceed) {
+        return {
+          content: '',
+          error: `Budget exceeded. Current spend: $${budgetCheck.data?.current_spend?.toFixed(
+            2,
+          )}, Limit: $${budgetCheck.data?.budget_limit?.toFixed(2)}`,
+        };
+      }
+    }
+
     const anthropic = new Anthropic({
       apiKey,
     });
@@ -109,7 +219,40 @@ export const sendClaudeMessage = async (
       };
     }
 
-    return { content };
+    // Calculate actual token usage
+    const actualInputTokens = message.usage?.input_tokens || estimatedInputTokens;
+    const actualOutputTokens = message.usage?.output_tokens || estimatedOutputTokens;
+    const actualCostCalc = model.includes('sonnet')
+      ? costCalculators.claude.sonnet(actualInputTokens, actualOutputTokens)
+      : costCalculators.claude.haiku(actualInputTokens, actualOutputTokens);
+
+    // Log usage if not skipped
+    if (!options.skipUsageLogging) {
+      await logApiUsageAndUpdateBudget({
+        service: 'Claude',
+        agent_id: options.agentId,
+        agent: options.agentName,
+        description: `LLM call: ${model}`,
+        cost: actualCostCalc.cost,
+        tokens_used: actualCostCalc.tokens_used,
+        metadata: {
+          model,
+          input_tokens: actualInputTokens,
+          output_tokens: actualOutputTokens,
+          prompt_length: prompt.length,
+          task_length: task.length,
+        },
+      });
+    }
+
+    return {
+      content,
+      usage: {
+        tokens_used: actualCostCalc.tokens_used,
+        cost: actualCostCalc.cost,
+        service: 'Claude',
+      },
+    };
   } catch (error) {
     console.error('Claude API error:', error);
     return {
@@ -120,15 +263,40 @@ export const sendClaudeMessage = async (
 };
 
 /**
- * Send message to Gemini (Google AI)
+ * Send message to Gemini (Google AI) with budget checking and usage logging
  */
 export const sendGeminiMessage = async (
   apiKey: string,
   model: string,
   prompt: string,
   task: string,
+  options: LLMCallOptions = {},
 ): Promise<LLMResponse> => {
   try {
+    // Estimate token usage for budget check
+    const estimatedInputTokens = Math.ceil((prompt.length + task.length) / 4); // Rough estimate
+    const estimatedOutputTokens = 1000; // Gemini typical response
+    const costCalc = costCalculators.gemini.pro(estimatedInputTokens, estimatedOutputTokens);
+
+    // Check budget before proceeding
+    if (!options.skipBudgetCheck) {
+      const budgetCheck = await checkBudgetBeforeAction('Gemini', costCalc.cost, options.agentId);
+      if (budgetCheck.error) {
+        return {
+          content: '',
+          error: `Budget check failed: ${budgetCheck.error}`,
+        };
+      }
+      if (!budgetCheck.data?.can_proceed) {
+        return {
+          content: '',
+          error: `Budget exceeded. Current spend: $${budgetCheck.data?.current_spend?.toFixed(
+            2,
+          )}, Limit: $${budgetCheck.data?.budget_limit?.toFixed(2)}`,
+        };
+      }
+    }
+
     const genAI = new GoogleGenerativeAI(apiKey);
     const geminiModel = genAI.getGenerativeModel({
       model: model || 'gemini-pro',
@@ -146,7 +314,39 @@ export const sendGeminiMessage = async (
       };
     }
 
-    return { content };
+    // Estimate actual token usage (Gemini doesn't provide token counts in response)
+    const actualInputTokens = Math.ceil((prompt.length + task.length) / 4);
+    const actualOutputTokens = Math.ceil(content.length / 4);
+    const actualCostCalc = costCalculators.gemini.pro(actualInputTokens, actualOutputTokens);
+
+    // Log usage if not skipped
+    if (!options.skipUsageLogging) {
+      await logApiUsageAndUpdateBudget({
+        service: 'Gemini',
+        agent_id: options.agentId,
+        agent: options.agentName,
+        description: `LLM call: ${model}`,
+        cost: actualCostCalc.cost,
+        tokens_used: actualCostCalc.tokens_used,
+        metadata: {
+          model,
+          estimated_input_tokens: actualInputTokens,
+          estimated_output_tokens: actualOutputTokens,
+          prompt_length: prompt.length,
+          task_length: task.length,
+          response_length: content.length,
+        },
+      });
+    }
+
+    return {
+      content,
+      usage: {
+        tokens_used: actualCostCalc.tokens_used,
+        cost: actualCostCalc.cost,
+        service: 'Gemini',
+      },
+    };
   } catch (error) {
     console.error('Gemini API error:', error);
     return {
@@ -157,22 +357,23 @@ export const sendGeminiMessage = async (
 };
 
 /**
- * Send message to LLM based on provider configuration
+ * Send message to LLM based on provider configuration with budget checking and usage logging
  */
 export const sendLLMMessage = async (
   config: LLMConfig,
   prompt: string,
   task: string,
+  options: LLMCallOptions = {},
 ): Promise<LLMResponse> => {
   const { provider, apiKey, model } = config;
 
   switch (provider) {
     case 'openai':
-      return await sendOpenAIMessage(apiKey, model, prompt, task);
+      return await sendOpenAIMessage(apiKey, model, prompt, task, options);
     case 'claude':
-      return await sendClaudeMessage(apiKey, model, prompt, task);
+      return await sendClaudeMessage(apiKey, model, prompt, task, options);
     case 'gemini':
-      return await sendGeminiMessage(apiKey, model, prompt, task);
+      return await sendGeminiMessage(apiKey, model, prompt, task, options);
     default:
       return {
         content: '',

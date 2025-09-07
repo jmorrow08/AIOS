@@ -2,23 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { CosmicBackground } from '@/components/CosmicBackground';
+import { useUser } from '@/context/UserContext';
+import HomepageLoginForm from '@/components/HomepageLoginForm';
+import HeyGenAvatarWidget from '@/components/HeyGenAvatarWidget';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
-  const [currentSpeech, setCurrentSpeech] = useState(0);
+  const { user, role } = useUser();
 
-  const greetings = [
-    'Welcome to Jarvis AI OS - Your intelligent business companion',
-    "I'm here to help streamline your operations with AI-powered tools",
-    "Let's explore how I can enhance your business productivity",
-  ];
+  // Role-based routing for Jarvis HQ
+  const getJarvisHQRoute = () => {
+    switch (role) {
+      case 'admin':
+        return '/admin';
+      case 'client':
+        return '/portal';
+      case 'agent':
+        return '/lab';
+      default:
+        return '/landing';
+    }
+  };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentSpeech((prev) => (prev + 1) % greetings.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
+  const handleLoginSuccess = () => {
+    navigate(getJarvisHQRoute());
+  };
 
   const features = [
     {
@@ -55,23 +63,9 @@ const Home: React.FC = () => {
       {/* Hero Section */}
       <section className="relative z-10 min-h-screen flex items-center justify-center px-4">
         <div className="max-w-7xl mx-auto text-center">
-          {/* HeyGen Avatar Section */}
+          {/* HeyGen Avatar Widget */}
           <div className="mb-12">
-            <div className="relative mx-auto w-48 h-48 mb-8">
-              {/* Avatar Container */}
-              <div className="w-full h-full rounded-full bg-gradient-to-br from-cosmic-accent via-blue-500 to-purple-600 flex items-center justify-center shadow-2xl">
-                <div className="text-8xl">🤖</div>
-              </div>
-              {/* Speech Bubble */}
-              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-xl border border-white/20 max-w-xs">
-                <p className="text-cosmic-dark text-sm font-medium leading-relaxed">
-                  {greetings[currentSpeech]}
-                </p>
-                <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
-                  <div className="w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-white/95"></div>
-                </div>
-              </div>
-            </div>
+            <HeyGenAvatarWidget />
           </div>
 
           {/* Main Heading */}
@@ -88,23 +82,34 @@ const Home: React.FC = () => {
             </p>
           </div>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-            <Button
-              size="lg"
-              className="bg-cosmic-accent hover:bg-cosmic-accent/80 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              onClick={() => navigate('/auth')}
-            >
-              Login
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-2 border-cosmic-highlight text-cosmic-highlight hover:bg-cosmic-highlight hover:text-cosmic-dark px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              onClick={() => navigate('/landing')}
-            >
-              Enter Jarvis HQ
-            </Button>
+          {/* Authentication Section */}
+          <div className="flex flex-col lg:flex-row gap-8 justify-center items-start mb-16">
+            {/* Login Form */}
+            {!user && (
+              <div className="flex-shrink-0">
+                <HomepageLoginForm onLoginSuccess={handleLoginSuccess} />
+              </div>
+            )}
+
+            {/* Jarvis HQ Button for authenticated users */}
+            {user && (
+              <div className="flex flex-col items-center gap-4">
+                <Button
+                  size="lg"
+                  className="bg-gradient-to-r from-cosmic-accent to-blue-600 hover:from-cosmic-accent/80 hover:to-blue-500 text-white px-12 py-6 text-xl font-semibold shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105 border-0"
+                  onClick={() => navigate(getJarvisHQRoute())}
+                >
+                  <span className="flex items-center gap-3">
+                    <span>🚀</span>
+                    <span>Enter Jarvis HQ</span>
+                    <span>→</span>
+                  </span>
+                </Button>
+                <p className="text-cosmic-accent text-sm">
+                  Welcome back! Access your {role} portal
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -163,10 +168,16 @@ const Home: React.FC = () => {
             {/* About */}
             <div>
               <h4 className="text-xl font-bold text-white mb-4">About Jarvis</h4>
-              <p className="text-cosmic-accent leading-relaxed">
+              <p className="text-cosmic-accent leading-relaxed mb-4">
                 Jarvis AI OS is a comprehensive business operating system that combines artificial
                 intelligence with enterprise-grade tools to streamline your operations.
               </p>
+              <button
+                onClick={() => navigate('/about')}
+                className="text-cosmic-highlight hover:text-white transition-colors font-medium"
+              >
+                Learn More →
+              </button>
             </div>
 
             {/* Docs */}
@@ -174,28 +185,28 @@ const Home: React.FC = () => {
               <h4 className="text-xl font-bold text-white mb-4">Documentation</h4>
               <ul className="space-y-2">
                 <li>
-                  <a
-                    href="#"
-                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors"
+                  <button
+                    onClick={() => navigate('/library')}
+                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors text-left"
+                  >
+                    Knowledge Library
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => navigate('/landing')}
+                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors text-left"
                   >
                     Getting Started
-                  </a>
+                  </button>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors"
+                  <button
+                    onClick={() => navigate('/lab')}
+                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors text-left"
                   >
-                    API Reference
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="#"
-                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors"
-                  >
-                    Best Practices
-                  </a>
+                    AI Lab Guide
+                  </button>
                 </li>
               </ul>
             </div>
@@ -205,28 +216,36 @@ const Home: React.FC = () => {
               <h4 className="text-xl font-bold text-white mb-4">Pricing</h4>
               <ul className="space-y-2">
                 <li>
-                  <a
-                    href="#"
-                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors"
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors text-left"
+                  >
+                    View Plans →
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors text-left"
                   >
                     Free Tier
-                  </a>
+                  </button>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors"
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors text-left"
                   >
                     Professional
-                  </a>
+                  </button>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors"
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="text-cosmic-accent hover:text-cosmic-highlight transition-colors text-left"
                   >
                     Enterprise
-                  </a>
+                  </button>
                 </li>
               </ul>
             </div>

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logApiUsageAndUpdateBudget } from '@/api/apiUsage';
 
 // Event types for webhook triggers
 export type HookEventType =
@@ -219,6 +220,18 @@ export const sendZapierEvent = async (
 
     const responseData = await response.json().catch(() => ({}));
 
+    // Log webhook usage (typically low/no cost, but track for monitoring)
+    await logApiUsageAndUpdateBudget({
+      service: 'Webhook',
+      description: `Zapier webhook: ${eventType}`,
+      cost: 0, // Webhooks are typically free or very low cost
+      metadata: {
+        event_type: eventType,
+        service: 'zapier',
+        webhook_url: config.zapier.webhook_url,
+      },
+    });
+
     return {
       success: true,
       message: 'Event sent to Zapier successfully',
@@ -278,6 +291,18 @@ export const sendTaskerEvent = async (
     }
 
     const responseData = await response.json().catch(() => ({}));
+
+    // Log webhook usage (typically low/no cost, but track for monitoring)
+    await logApiUsageAndUpdateBudget({
+      service: 'Webhook',
+      description: `Tasker webhook: ${eventType}`,
+      cost: 0, // Webhooks are typically free or very low cost
+      metadata: {
+        event_type: eventType,
+        service: 'tasker',
+        webhook_url: config.tasker.webhook_url,
+      },
+    });
 
     return {
       success: true,

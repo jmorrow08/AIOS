@@ -98,11 +98,19 @@ serve(async (req) => {
 
     const session = event.data.object;
 
-    // Extract invoice ID from metadata (you'll need to pass this when creating the Stripe checkout session)
+    // Extract invoice ID and company ID from metadata
     const invoiceId = session.metadata?.invoice_id;
+    const companyId = session.metadata?.company_id;
+    const customerId = session.customer;
+
     if (!invoiceId) {
       console.error('No invoice ID found in session metadata');
       return new Response('Invoice ID missing', { status: 400 });
+    }
+
+    if (!companyId) {
+      console.error('No company ID found in session metadata');
+      return new Response('Company ID missing', { status: 400 });
     }
 
     // Initialize Supabase client with service role key for server-side operations
@@ -110,6 +118,19 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // First, update the company's stripe_customer_id if not already set
+    if (customerId) {
+      const { error: customerUpdateError } = await supabase
+        .from('companies')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', companyId);
+
+      if (customerUpdateError) {
+        console.error('Error updating company stripe_customer_id:', customerUpdateError);
+        // Continue processing - this isn't critical for payment processing
+      }
+    }
 
     // Update invoice status to 'paid' and set paid_date
     const paidDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
@@ -121,6 +142,7 @@ serve(async (req) => {
         paid_date: paidDate,
       })
       .eq('id', invoiceId)
+      .eq('company_id', companyId) // Ensure invoice belongs to the company
       .select()
       .single();
 
@@ -130,7 +152,7 @@ serve(async (req) => {
     }
 
     if (!invoice) {
-      console.error('Invoice not found');
+      console.error('Invoice not found or does not belong to company');
       return new Response('Invoice not found', { status: 404 });
     }
 
@@ -153,14 +175,41 @@ serve(async (req) => {
       // You might want to handle this differently based on your business logic
     }
 
+    // Log the successful payment in activity_log if the table exists
+    try {
+      const { error: activityError } = await supabase.from('activity_log').insert([
+        {
+          company_id: companyId,
+          action: 'payment_processed',
+          details: {
+            invoice_id: invoiceId,
+            amount: invoice.amount,
+            stripe_session_id: session.id,
+            customer_id: customerId,
+          },
+          created_by: null, // System action
+        },
+      ]);
+
+      if (activityError) {
+        console.error('Error logging activity:', activityError);
+        // Don't fail the webhook for logging errors
+      }
+    } catch (activityLogError) {
+      console.error('Activity log error (table may not exist):', activityLogError);
+    }
+
     console.log('Invoice marked as paid:', invoiceId);
     console.log('Transaction created:', transaction?.id);
+    console.log('Stripe customer ID stored for company:', companyId);
 
     return new Response(
       JSON.stringify({
         success: true,
         invoice_id: invoiceId,
         transaction_id: transaction?.id,
+        company_id: companyId,
+        stripe_customer_id: customerId,
       }),
       {
         status: 200,

@@ -1,16 +1,27 @@
 import { supabase } from '@/lib/supabaseClient';
+import { logActivity } from '@/api/dashboard';
 
 export type InvoiceStatus = 'pending' | 'paid' | 'overdue';
 
 export interface Invoice {
   id: string;
   company_id: string;
-  service_id: string;
+  service_id?: string;
   amount: number;
   due_date: string;
   status: InvoiceStatus;
   paid_date?: string;
+  line_items?: LineItem[];
+  payment_link?: string;
   created_at: string;
+  updated_at?: string;
+}
+
+export interface LineItem {
+  description: string;
+  amount: number;
+  quantity?: number;
+  unit_price?: number;
 }
 
 export interface Transaction {
@@ -33,29 +44,28 @@ export interface TransactionResponse {
 
 export interface CreateInvoiceData {
   company_id: string;
-  service_id: string;
+  service_id?: string;
   amount: number;
   due_date: string;
+  line_items?: LineItem[];
+  payment_link?: string;
 }
 
 /**
  * Create a new invoice
  */
-export const createInvoice = async (
-  companyId: string,
-  serviceId: string,
-  amount: number,
-  dueDate: string,
-): Promise<InvoiceResponse> => {
+export const createInvoice = async (invoiceData: CreateInvoiceData): Promise<InvoiceResponse> => {
   try {
     const { data, error } = await supabase
       .from('invoices')
       .insert([
         {
-          company_id: companyId,
-          service_id: serviceId,
-          amount,
-          due_date: dueDate,
+          company_id: invoiceData.company_id,
+          service_id: invoiceData.service_id,
+          amount: invoiceData.amount,
+          due_date: invoiceData.due_date,
+          line_items: invoiceData.line_items || [],
+          payment_link: invoiceData.payment_link,
           status: 'pending' as InvoiceStatus,
         },
       ])
@@ -68,6 +78,24 @@ export const createInvoice = async (
         data: null,
         error: error.message || 'Failed to create invoice',
       };
+    }
+
+    // Log activity
+    try {
+      await logActivity(
+        `Invoice #${data.id.slice(-8)} created for $${invoiceData.amount.toFixed(2)}`,
+        'invoice',
+        '/financial-nexus',
+        {
+          invoice_id: data.id,
+          amount: invoiceData.amount,
+          client_id: invoiceData.company_id,
+          service_id: invoiceData.service_id,
+          line_items_count: invoiceData.line_items?.length || 0,
+        },
+      );
+    } catch (logError) {
+      console.warn('Failed to log invoice creation activity:', logError);
     }
 
     return {
@@ -141,6 +169,22 @@ export const markInvoicePaid = async (invoiceId: string): Promise<InvoiceRespons
         data: null,
         error: error.message || 'Failed to mark invoice as paid',
       };
+    }
+
+    // Log activity
+    try {
+      await logActivity(
+        `Invoice #${invoiceId.slice(-8)} was marked as paid ($${data.amount.toFixed(2)})`,
+        'invoice',
+        '/financial-nexus',
+        {
+          invoice_id: invoiceId,
+          amount: data.amount,
+          paid_date: paidDate,
+        },
+      );
+    } catch (logError) {
+      console.warn('Failed to log invoice payment activity:', logError);
     }
 
     return {
@@ -348,4 +392,94 @@ export const updateInvoiceStatus = async (
       error: 'An unexpected error occurred while updating the invoice status',
     };
   }
+};
+
+/**
+ * Get invoice statistics
+ */
+export const getInvoiceStats = async (
+  companyId?: string,
+): Promise<{
+  data: {
+    totalUnpaid: number;
+    totalOverdue: number;
+    totalPaidThisMonth: number;
+    totalOutstanding: number;
+  } | null;
+  error: string | null;
+}> => {
+  try {
+    let query = supabase.from('invoices').select('*');
+
+    if (companyId) {
+      query = query.eq('company_id', companyId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching invoice stats:', error);
+      return { data: null, error: error.message || 'Failed to fetch invoice stats' };
+    }
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    let totalUnpaid = 0;
+    let totalOverdue = 0;
+    let totalPaidThisMonth = 0;
+    let totalOutstanding = 0;
+
+    if (data) {
+      data.forEach((invoice: any) => {
+        if (invoice.status === 'paid') {
+          if (new Date(invoice.paid_date) >= startOfMonth) {
+            totalPaidThisMonth += invoice.amount;
+          }
+        } else {
+          totalOutstanding += invoice.amount;
+          if (invoice.status === 'overdue' || new Date(invoice.due_date) < now) {
+            totalOverdue += invoice.amount;
+          } else {
+            totalUnpaid += invoice.amount;
+          }
+        }
+      });
+    }
+
+    return {
+      data: {
+        totalUnpaid,
+        totalOverdue,
+        totalPaidThisMonth,
+        totalOutstanding,
+      },
+      error: null,
+    };
+  } catch (error) {
+    console.error('Unexpected error fetching invoice stats:', error);
+    return {
+      data: null,
+      error: 'An unexpected error occurred while fetching invoice stats',
+    };
+  }
+};
+
+/**
+ * Generate invoice number (simple implementation)
+ */
+export const generateInvoiceNumber = async (): Promise<string> => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+
+  // Get count of invoices this month for sequential numbering
+  const startOfMonth = new Date(year, now.getMonth(), 1);
+  const { count } = await supabase
+    .from('invoices')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', startOfMonth.toISOString());
+
+  const sequence = String((count || 0) + 1).padStart(4, '0');
+  return `INV-${year}${month}-${sequence}`;
 };

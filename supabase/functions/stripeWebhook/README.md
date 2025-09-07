@@ -1,13 +1,16 @@
-# Stripe Webhook Handler
+# Stripe Webhook Handler (Multi-Tenant)
 
-This Supabase Edge Function handles Stripe webhook events, specifically processing `checkout.session.completed` events to update invoice status and create transaction records.
+This Supabase Edge Function handles Stripe webhook events in a multi-tenant environment, processing `checkout.session.completed` events to update invoice status, create transaction records, and maintain company data isolation.
 
 ## Features
 
-- Listens for `checkout.session.completed` events from Stripe
-- Updates invoice status to 'paid' and sets `paid_date`
-- Creates a transaction record linked to the invoice
-- Returns proper HTTP status codes for webhook responses
+- **Multi-Tenant Support**: Processes payments with company context validation
+- **Company Data Isolation**: Ensures invoices belong to the correct company
+- **Stripe Customer Management**: Updates company Stripe customer IDs
+- **Comprehensive Logging**: Activity logging for audit trails
+- **Secure Processing**: Validates company ownership before processing payments
+- **Transaction Records**: Creates detailed payment transaction records
+- **Error Handling**: Robust error handling with proper HTTP responses
 
 ## Setup
 
@@ -87,10 +90,11 @@ You can also test the webhook using tools like:
 
 ### Creating Stripe Checkout Sessions
 
-When creating checkout sessions in Stripe, include the invoice ID in the session metadata:
+When creating checkout sessions in Stripe, include both invoice ID and company ID in the session metadata for proper multi-tenant processing:
 
 ```javascript
 const session = await stripe.checkout.sessions.create({
+  customer: 'cus_stripe_customer_id', // Link to existing Stripe customer
   payment_method_types: ['card'],
   line_items: [
     {
@@ -98,6 +102,7 @@ const session = await stripe.checkout.sessions.create({
         currency: 'usd',
         product_data: {
           name: 'Invoice Payment',
+          description: `Invoice ${invoiceId.slice(0, 8)}`,
         },
         unit_amount: amountInCents,
       },
@@ -105,24 +110,34 @@ const session = await stripe.checkout.sessions.create({
     },
   ],
   mode: 'payment',
-  success_url: 'https://your-app.com/success',
-  cancel_url: 'https://your-app.com/cancel',
+  success_url: `${window.location.origin}/client-portal/billing?success=true`,
+  cancel_url: `${window.location.origin}/client-portal/billing?canceled=true`,
   metadata: {
-    invoice_id: 'your-invoice-uuid-here', // Required for webhook processing
+    invoice_id: 'your-invoice-uuid-here', // Required for invoice processing
+    company_id: 'your-company-uuid-here', // Required for multi-tenant validation
   },
 });
 ```
 
-### Webhook Flow
+### Multi-Tenant Webhook Flow
 
-1. Stripe sends `checkout.session.completed` event to the webhook endpoint
-2. Function extracts the `invoice_id` from session metadata
-3. Updates the invoice status to 'paid' and sets `paid_date` to current date
-4. Creates a new transaction record with:
-   - `invoice_id`: The invoice that was paid
-   - `amount`: The invoice amount
-   - `payment_method`: 'stripe'
-5. Returns 200 success response
+1. **Stripe Event Reception**: Receives `checkout.session.completed` event
+2. **Signature Verification**: Validates webhook signature using HMAC-SHA256
+3. **Metadata Extraction**: Extracts `invoice_id` and `company_id` from session metadata
+4. **Company Validation**: Verifies invoice belongs to the specified company
+5. **Customer ID Update**: Updates company's `stripe_customer_id` if not set
+6. **Invoice Processing**: Updates invoice status to 'paid' and sets `paid_date`
+7. **Transaction Creation**: Creates detailed transaction record with company context
+8. **Activity Logging**: Logs payment event in company activity log
+9. **Response**: Returns success/failure response with detailed information
+
+### Security Features
+
+- **Company Isolation**: Validates all operations against company ownership
+- **Data Integrity**: Ensures invoice belongs to company before processing
+- **Audit Trail**: Comprehensive logging of all payment activities
+- **Error Recovery**: Graceful handling of partial failures
+- **Signature Security**: Cryptographic verification of webhook authenticity
 
 ## Security Notes
 
@@ -133,11 +148,35 @@ const session = await stripe.checkout.sessions.create({
 
 ## Error Handling
 
-The function handles various error scenarios:
+The function handles various multi-tenant error scenarios:
 
-- Missing or invalid webhook signatures
-- Unsupported event types
-- Missing invoice ID in metadata
-- Database operation failures
+### Validation Errors
 
-All errors are logged to the console and return appropriate HTTP status codes.
+- **Missing Metadata**: `invoice_id` or `company_id` not provided in session metadata
+- **Invalid Company**: Invoice does not belong to the specified company
+- **Invoice Not Found**: Invoice UUID does not exist in database
+- **Already Paid**: Invoice status is already 'paid'
+
+### Security Errors
+
+- **Invalid Signature**: Webhook signature verification fails
+- **Unauthorized Access**: Attempt to access data outside company scope
+
+### Processing Errors
+
+- **Database Failures**: Invoice update or transaction creation fails
+- **Stripe API Errors**: Issues with Stripe customer operations
+- **Partial Failures**: Some operations succeed while others fail
+
+### Error Response Format
+
+```json
+{
+  "error": "Detailed error message",
+  "code": "ERROR_CODE",
+  "company_id": "company-uuid",
+  "invoice_id": "invoice-uuid"
+}
+```
+
+All errors are logged with full context and return appropriate HTTP status codes for proper webhook retry handling.

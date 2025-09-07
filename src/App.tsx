@@ -4,10 +4,19 @@ import Auth from '@/components/Auth';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Home from '@/pages/Home';
 import Landing from '@/pages/Landing';
+import About from '@/pages/About';
+import Pricing from '@/pages/Pricing';
 import AdminPortal from '@/pages/AdminPortal';
+import DevPortal from '@/pages/DevPortal';
+import HRPortal from '@/pages/HRPortal';
 import ClientPortal from '@/pages/ClientPortal';
+import Onboarding from '@/pages/Onboarding';
 import AiLab from '@/pages/AiLab';
 import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
+import MediaStudio from '@/pages/MediaStudio';
+import FinancialNexus from '@/pages/FinancialNexus';
+import OperationsHub from '@/pages/OperationsHub';
+import Settings from '@/pages/Settings';
 import { UserProvider } from '@/context/UserContext';
 
 const AppContent: React.FC = () => {
@@ -15,6 +24,8 @@ const AppContent: React.FC = () => {
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<Home />} />
+      <Route path="/about" element={<About />} />
+      <Route path="/pricing" element={<Pricing />} />
       <Route path="/auth" element={<Auth onAuthSuccess={() => {}} />} />
       <Route path="/login" element={<Auth onAuthSuccess={() => {}} />} />
 
@@ -39,9 +50,45 @@ const AppContent: React.FC = () => {
       />
 
       <Route
+        path="/dev"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <DevPortal />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/hr"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <HRPortal />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/portal"
         element={
           <ProtectedRoute requiredRole="client">
+            <ClientPortal />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/client-portal"
+        element={
+          <ProtectedRoute>
             <ClientPortal />
           </ProtectedRoute>
         }
@@ -61,6 +108,42 @@ const AppContent: React.FC = () => {
         element={
           <ProtectedRoute>
             <KnowledgeLibrary />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/media"
+        element={
+          <ProtectedRoute>
+            <MediaStudio />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/finance"
+        element={
+          <ProtectedRoute>
+            <FinancialNexus />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/operations"
+        element={
+          <ProtectedRoute>
+            <OperationsHub />
           </ProtectedRoute>
         }
       />
