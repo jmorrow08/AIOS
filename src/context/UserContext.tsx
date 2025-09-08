@@ -36,8 +36,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setError(null);
       const { data, error } = await supabase
-        .from('users')
-        .select('id, email, role, company_id, created_at')
+        .from('profiles')
+        .select('id, email, role, company_name, created_at')
         .eq('id', userId)
         .single();
 
@@ -48,8 +48,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setProfile(data);
-      setRole(data.role);
-      setCompanyId(data.company_id);
+      setRole(data.role as UserRole);
+      setCompanyId(data.company_name); // Note: using company_name instead of company_id
       return data;
     } catch (error) {
       console.error('Error fetching user profile:', error);

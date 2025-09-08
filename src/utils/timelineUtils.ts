@@ -57,16 +57,17 @@ export const createDefaultTimeline = (settings: MediaProjectSettings): TimelineS
 export const addTrack = (
   timelineState: TimelineState,
   type: TrackType,
-  name?: string
+  name?: string,
 ): TimelineState => {
   const trackColors = {
     video: '#3B82F6', // blue
     audio: '#10B981', // emerald
-    text: '#F59E0B',   // amber
+    text: '#F59E0B', // amber
   };
 
-  const trackNumber = timelineState.tracks.filter(t => t.type === type).length + 1;
-  const defaultName = name || `${type.charAt(0).toUpperCase() + type.slice(1)} Track ${trackNumber}`;
+  const trackNumber = timelineState.tracks.filter((t) => t.type === type).length + 1;
+  const defaultName =
+    name || `${type.charAt(0).toUpperCase() + type.slice(1)} Track ${trackNumber}`;
 
   const newTrack: Track = {
     id: `${type}-track-${Date.now()}`,
@@ -88,17 +89,12 @@ export const addTrack = (
 /**
  * Remove a track from the timeline
  */
-export const removeTrack = (
-  timelineState: TimelineState,
-  trackId: string
-): TimelineState => {
-  const updatedTracks = timelineState.tracks.filter(track => track.id !== trackId);
+export const removeTrack = (timelineState: TimelineState, trackId: string): TimelineState => {
+  const updatedTracks = timelineState.tracks.filter((track) => track.id !== trackId);
 
   // Clear selection if selected clips were on the removed track
-  const selectedClipIds = timelineState.selectedClipIds.filter(clipId => {
-    return !timelineState.tracks
-      .find(t => t.id === trackId)?.clips
-      .some(c => c.id === clipId);
+  const selectedClipIds = timelineState.selectedClipIds.filter((clipId) => {
+    return !timelineState.tracks.find((t) => t.id === trackId)?.clips.some((c) => c.id === clipId);
   });
 
   return {
@@ -114,9 +110,9 @@ export const removeTrack = (
 export const addClipToTrack = (
   timelineState: TimelineState,
   trackId: string,
-  clipData: Partial<Clip>
+  clipData: Partial<Clip>,
 ): TimelineState => {
-  const track = timelineState.tracks.find(t => t.id === trackId);
+  const track = timelineState.tracks.find((t) => t.id === trackId);
   if (!track) return timelineState;
 
   const newClip: Clip = {
@@ -139,9 +135,9 @@ export const addClipToTrack = (
   };
 
   // Check for conflicts
-  const conflicts = track.clips.filter(existingClip =>
-    newClip.startTime < existingClip.endTime &&
-    newClip.endTime > existingClip.startTime
+  const conflicts = track.clips.filter(
+    (existingClip) =>
+      newClip.startTime < existingClip.endTime && newClip.endTime > existingClip.startTime,
   );
 
   if (conflicts.length > 0) {
@@ -151,16 +147,14 @@ export const addClipToTrack = (
     newClip.endTime = newClip.startTime + newClip.duration;
   }
 
-  const updatedTracks = timelineState.tracks.map(t =>
-    t.id === trackId
-      ? { ...t, clips: [...t.clips, newClip] }
-      : t
+  const updatedTracks = timelineState.tracks.map((t) =>
+    t.id === trackId ? { ...t, clips: [...t.clips, newClip] } : t,
   );
 
   // Update total duration if needed
   const maxEndTime = Math.max(
-    ...updatedTracks.flatMap(t => t.clips.map(c => c.endTime)),
-    timelineState.totalDuration
+    ...updatedTracks.flatMap((t) => t.clips.map((c) => c.endTime)),
+    timelineState.totalDuration,
   );
 
   return {
@@ -173,19 +167,16 @@ export const addClipToTrack = (
 /**
  * Remove a clip from the timeline
  */
-export const removeClip = (
-  timelineState: TimelineState,
-  clipId: string
-): TimelineState => {
-  const updatedTracks = timelineState.tracks.map(track => ({
+export const removeClip = (timelineState: TimelineState, clipId: string): TimelineState => {
+  const updatedTracks = timelineState.tracks.map((track) => ({
     ...track,
-    clips: track.clips.filter(clip => clip.id !== clipId),
+    clips: track.clips.filter((clip) => clip.id !== clipId),
   }));
 
   return {
     ...timelineState,
     tracks: updatedTracks,
-    selectedClipIds: timelineState.selectedClipIds.filter(id => id !== clipId),
+    selectedClipIds: timelineState.selectedClipIds.filter((id) => id !== clipId),
   };
 };
 
@@ -195,11 +186,11 @@ export const removeClip = (
 export const updateClip = (
   timelineState: TimelineState,
   clipId: string,
-  updates: Partial<Clip>
+  updates: Partial<Clip>,
 ): TimelineState => {
-  const updatedTracks = timelineState.tracks.map(track => ({
+  const updatedTracks = timelineState.tracks.map((track) => ({
     ...track,
-    clips: track.clips.map(clip =>
+    clips: track.clips.map((clip) =>
       clip.id === clipId
         ? {
             ...clip,
@@ -209,14 +200,14 @@ export const updateClip = (
               modifiedAt: new Date().toISOString(),
             },
           }
-        : clip
+        : clip,
     ),
   }));
 
   return {
     ...timelineState,
     tracks: updatedTracks,
-  });
+  };
 };
 
 /**
@@ -226,23 +217,20 @@ export const moveClip = (
   timelineState: TimelineState,
   clipId: string,
   newTrackId: string,
-  newStartTime: number
+  newStartTime: number,
 ): TimelineState => {
-  const sourceTrack = timelineState.tracks.find(t =>
-    t.clips.some(c => c.id === clipId)
-  );
-  const targetTrack = timelineState.tracks.find(t => t.id === newTrackId);
+  const sourceTrack = timelineState.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+  const targetTrack = timelineState.tracks.find((t) => t.id === newTrackId);
 
   if (!sourceTrack || !targetTrack) return timelineState;
 
-  const clip = sourceTrack.clips.find(c => c.id === clipId);
+  const clip = sourceTrack.clips.find((c) => c.id === clipId);
   if (!clip) return timelineState;
 
   // Check for conflicts on target track
-  const conflicts = targetTrack.clips.filter(c =>
-    c.id !== clipId &&
-    newStartTime < c.endTime &&
-    (newStartTime + clip.duration) > c.startTime
+  const conflicts = targetTrack.clips.filter(
+    (c) =>
+      c.id !== clipId && newStartTime < c.endTime && newStartTime + clip.duration > c.startTime,
   );
 
   if (conflicts.length > 0) {
@@ -267,12 +255,12 @@ export const moveClip = (
     endTime: newStartTime + clip.duration,
   };
 
-  const updatedTracks = timelineState.tracks.map(track => {
+  const updatedTracks = timelineState.tracks.map((track) => {
     if (track.id === sourceTrack.id) {
       // Remove from source track
       return {
         ...track,
-        clips: track.clips.filter(c => c.id !== clipId),
+        clips: track.clips.filter((c) => c.id !== clipId),
       };
     } else if (track.id === targetTrack.id) {
       // Add to target track
@@ -296,15 +284,13 @@ export const moveClip = (
 export const splitClip = (
   timelineState: TimelineState,
   clipId: string,
-  splitTime: number
+  splitTime: number,
 ): TimelineState => {
-  const track = timelineState.tracks.find(t =>
-    t.clips.some(c => c.id === clipId)
-  );
+  const track = timelineState.tracks.find((t) => t.clips.some((c) => c.id === clipId));
 
   if (!track) return timelineState;
 
-  const clip = track.clips.find(c => c.id === clipId);
+  const clip = track.clips.find((c) => c.id === clipId);
   if (!clip || splitTime <= clip.startTime || splitTime >= clip.endTime) {
     return timelineState;
   }
@@ -331,17 +317,15 @@ export const splitClip = (
     },
   };
 
-  const updatedTracks = timelineState.tracks.map(t =>
+  const updatedTracks = timelineState.tracks.map((t) =>
     t.id === track.id
       ? {
           ...t,
-          clips: [
-            ...t.clips.filter(c => c.id !== clipId),
-            firstClip,
-            secondClip,
-          ].sort((a, b) => a.startTime - b.startTime),
+          clips: [...t.clips.filter((c) => c.id !== clipId), firstClip, secondClip].sort(
+            (a, b) => a.startTime - b.startTime,
+          ),
         }
-      : t
+      : t,
   );
 
   return {
@@ -357,15 +341,13 @@ export const splitClip = (
 export const duplicateClip = (
   timelineState: TimelineState,
   clipId: string,
-  offset: number = 1
+  offset: number = 1,
 ): TimelineState => {
-  const track = timelineState.tracks.find(t =>
-    t.clips.some(c => c.id === clipId)
-  );
+  const track = timelineState.tracks.find((t) => t.clips.some((c) => c.id === clipId));
 
   if (!track) return timelineState;
 
-  const originalClip = track.clips.find(c => c.id === clipId);
+  const originalClip = track.clips.find((c) => c.id === clipId);
   if (!originalClip) return timelineState;
 
   const duplicatedClip: Clip = {
@@ -381,16 +363,14 @@ export const duplicateClip = (
     },
   };
 
-  const updatedTracks = timelineState.tracks.map(t =>
-    t.id === track.id
-      ? { ...t, clips: [...t.clips, duplicatedClip] }
-      : t
+  const updatedTracks = timelineState.tracks.map((t) =>
+    t.id === track.id ? { ...t, clips: [...t.clips, duplicatedClip] } : t,
   );
 
   // Update total duration if needed
   const maxEndTime = Math.max(
-    ...updatedTracks.flatMap(t => t.clips.map(c => c.endTime)),
-    timelineState.totalDuration
+    ...updatedTracks.flatMap((t) => t.clips.map((c) => c.endTime)),
+    timelineState.totalDuration,
   );
 
   return {
@@ -404,8 +384,8 @@ export const duplicateClip = (
  * Auto-sync audio clips with video clips
  */
 export const autoSyncAudio = (timelineState: TimelineState): TimelineState => {
-  const videoTracks = timelineState.tracks.filter(t => t.type === 'video');
-  const audioTracks = timelineState.tracks.filter(t => t.type === 'audio');
+  const videoTracks = timelineState.tracks.filter((t) => t.type === 'video');
+  const audioTracks = timelineState.tracks.filter((t) => t.type === 'audio');
 
   if (videoTracks.length === 0 || audioTracks.length === 0) {
     return timelineState;
@@ -418,10 +398,9 @@ export const autoSyncAudio = (timelineState: TimelineState): TimelineState => {
     for (const videoClip of videoTrack.clips) {
       // Find audio clips that should be synced
       for (const audioTrack of audioTracks) {
-        const syncedClips = audioTrack.clips.map(audioClip => {
+        const syncedClips = audioTrack.clips.map((audioClip) => {
           // If audio clip overlaps with video clip, adjust its timing
-          if (audioClip.startTime < videoClip.endTime &&
-              audioClip.endTime > videoClip.startTime) {
+          if (audioClip.startTime < videoClip.endTime && audioClip.endTime > videoClip.startTime) {
             return {
               ...audioClip,
               startTime: videoClip.startTime,
@@ -431,10 +410,8 @@ export const autoSyncAudio = (timelineState: TimelineState): TimelineState => {
           return audioClip;
         });
 
-        updatedTracks = updatedTracks.map(t =>
-          t.id === audioTrack.id
-            ? { ...t, clips: syncedClips }
-            : t
+        updatedTracks = updatedTracks.map((t) =>
+          t.id === audioTrack.id ? { ...t, clips: syncedClips } : t,
         );
       }
     }
@@ -450,10 +427,10 @@ export const autoSyncAudio = (timelineState: TimelineState): TimelineState => {
  * Calculate the total duration of all clips in the timeline
  */
 export const calculateTotalDuration = (tracks: Track[]): number => {
-  const allClips = tracks.flatMap(track => track.clips);
+  const allClips = tracks.flatMap((track) => track.clips);
   if (allClips.length === 0) return 60; // default 1 minute
 
-  const maxEndTime = Math.max(...allClips.map(clip => clip.endTime));
+  const maxEndTime = Math.max(...allClips.map((clip) => clip.endTime));
   return Math.max(maxEndTime, 60); // minimum 1 minute
 };
 
@@ -473,15 +450,17 @@ export const validateTimeline = (timelineState: TimelineState) => {
       const nextClip = sortedClips[i + 1];
 
       if (currentClip.endTime > nextClip.startTime) {
-        warnings.push(`Overlapping clips on ${track.name}: "${currentClip.title}" and "${nextClip.title}"`);
+        warnings.push(
+          `Overlapping clips on ${track.name}: "${currentClip.title}" and "${nextClip.title}"`,
+        );
       }
     }
   }
 
   // Check for clips with missing media
   const clipsWithoutMedia = timelineState.tracks
-    .flatMap(track => track.clips)
-    .filter(clip => !clip.content.mediaUrl && !clip.content.text);
+    .flatMap((track) => track.clips)
+    .filter((clip) => !clip.content.mediaUrl && !clip.content.text);
 
   if (clipsWithoutMedia.length > 0) {
     warnings.push(`${clipsWithoutMedia.length} clips are missing media content`);

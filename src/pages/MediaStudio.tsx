@@ -57,7 +57,6 @@ import {
   generateImage,
   generateAudio,
   uploadMediaToStorage,
-  calculateTotalDuration,
   validateScene,
   getDefaultProjectSettings,
   saveProjectSettings,

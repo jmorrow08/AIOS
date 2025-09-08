@@ -95,7 +95,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
   const [selectedTransaction, setSelectedTransaction] = useState<PayrollTransaction | null>(null);
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
   const [selectedRule, setSelectedRule] = useState<PayrollRule | null>(null);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'rules' | 'notifications'>('transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'rules' | 'notifications'>(
+    'transactions',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form states
@@ -140,13 +142,14 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [transactionsResult, employeesResult, agentsResult, rulesResult, notificationsResult] = await Promise.all([
-        getPayrollTransactions(),
-        getEmployeesWithAgents(),
-        getAgentsWithPermissions(),
-        getPayrollRules(),
-        getEmployeeNotifications(),
-      ]);
+      const [transactionsResult, employeesResult, agentsResult, rulesResult, notificationsResult] =
+        await Promise.all([
+          getPayrollTransactions(),
+          getEmployeesWithAgents(),
+          getAgentsWithPermissions(),
+          getPayrollRules(),
+          getEmployeeNotifications(),
+        ]);
 
       if (transactionsResult.data) {
         setTransactions(transactionsResult.data);
@@ -474,7 +477,7 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
           prev.map((t) => {
             const updated = result.data!.find((u) => u.id === t.id);
             return updated || t;
-          })
+          }),
         );
         setSelectedTransactions([]);
       }
@@ -496,10 +499,12 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
       const result = await markPayrollAsPaid(
         selectedTransaction.id,
         paymentForm.payment_method,
-        paymentForm.payment_reference
+        paymentForm.payment_reference,
       );
       if (result.data) {
-        setTransactions((prev) => prev.map((t) => (t.id === selectedTransaction.id ? result.data! : t)));
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === selectedTransaction.id ? result.data! : t)),
+        );
         setIsPaymentDialogOpen(false);
         setPaymentForm({ payment_method: 'zelle', payment_reference: '' });
         setSelectedTransaction(null);
@@ -515,7 +520,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
     try {
       const result = await markNotificationAsRead(notificationId);
       if (result.data) {
-        setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)),
+        );
       }
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -705,7 +712,7 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
             className="flex items-center gap-2 px-4 py-2 text-white data-[state=active]:bg-cosmic-accent data-[state=active]:text-white"
           >
             <Bell className="w-4 h-4" />
-            Notifications ({notifications.filter(n => !n.is_read).length})
+            Notifications ({notifications.filter((n) => !n.is_read).length})
           </TabsTrigger>
         </TabsList>
 
@@ -760,7 +767,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-white">${(totalPending + totalApproved + totalPaid).toFixed(2)}</div>
+                <div className="text-2xl font-bold text-white">
+                  ${(totalPending + totalApproved + totalPaid).toFixed(2)}
+                </div>
                 <p className="text-gray-400 text-xs">All transactions</p>
               </CardContent>
             </Card>
@@ -772,16 +781,15 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <span className="text-white">{selectedTransactions.length} transactions selected</span>
+                    <span className="text-white">
+                      {selectedTransactions.length} transactions selected
+                    </span>
                     <Badge variant="outline" className="text-orange-400 border-orange-400">
                       Pending Approval
                     </Badge>
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      onClick={handleBulkApprove}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
+                    <Button onClick={handleBulkApprove} className="bg-green-600 hover:bg-green-700">
                       <CheckCircle className="w-4 h-4 mr-2" />
                       Bulk Approve
                     </Button>
@@ -818,11 +826,21 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                     <SelectValue placeholder="All Statuses" />
                   </SelectTrigger>
                   <SelectContent className="bg-cosmic-dark border-cosmic-light">
-                    <SelectItem value="all" className="text-white">All Statuses</SelectItem>
-                    <SelectItem value="pending" className="text-white">Pending</SelectItem>
-                    <SelectItem value="processed" className="text-white">Approved</SelectItem>
-                    <SelectItem value="paid" className="text-white">Paid</SelectItem>
-                    <SelectItem value="failed" className="text-white">Failed</SelectItem>
+                    <SelectItem value="all" className="text-white">
+                      All Statuses
+                    </SelectItem>
+                    <SelectItem value="pending" className="text-white">
+                      Pending
+                    </SelectItem>
+                    <SelectItem value="processed" className="text-white">
+                      Approved
+                    </SelectItem>
+                    <SelectItem value="paid" className="text-white">
+                      Paid
+                    </SelectItem>
+                    <SelectItem value="failed" className="text-white">
+                      Failed
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={dateFilter} onValueChange={setDateFilter}>
@@ -830,10 +848,18 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                     <SelectValue placeholder="All Dates" />
                   </SelectTrigger>
                   <SelectContent className="bg-cosmic-dark border-cosmic-light">
-                    <SelectItem value="all" className="text-white">All Dates</SelectItem>
-                    <SelectItem value="this_month" className="text-white">This Month</SelectItem>
-                    <SelectItem value="last_month" className="text-white">Last Month</SelectItem>
-                    <SelectItem value="this_year" className="text-white">This Year</SelectItem>
+                    <SelectItem value="all" className="text-white">
+                      All Dates
+                    </SelectItem>
+                    <SelectItem value="this_month" className="text-white">
+                      This Month
+                    </SelectItem>
+                    <SelectItem value="last_month" className="text-white">
+                      Last Month
+                    </SelectItem>
+                    <SelectItem value="this_year" className="text-white">
+                      This Year
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -856,7 +882,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleSelectAll(selectedTransactions.length !== pendingCount)}
+                        onClick={() =>
+                          handleSelectAll(selectedTransactions.length !== pendingCount)
+                        }
                         className="text-gray-400 hover:text-white p-0"
                       >
                         {selectedTransactions.length === pendingCount && pendingCount > 0 ? (
@@ -883,7 +911,12 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleSelectTransaction(transaction.id, !selectedTransactions.includes(transaction.id))}
+                            onClick={() =>
+                              handleSelectTransaction(
+                                transaction.id,
+                                !selectedTransactions.includes(transaction.id),
+                              )
+                            }
                             className="text-gray-400 hover:text-white p-0"
                           >
                             {selectedTransactions.includes(transaction.id) ? (
@@ -991,9 +1024,7 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                 <TableBody>
                   {payrollRules.map((rule) => (
                     <TableRow key={rule.id} className="border-cosmic-light">
-                      <TableCell className="text-white font-medium">
-                        {rule.name}
-                      </TableCell>
+                      <TableCell className="text-white font-medium">{rule.name}</TableCell>
                       <TableCell className="text-white text-sm">
                         {rule.role && <div>Role: {rule.role}</div>}
                         {rule.department && <div>Dept: {rule.department}</div>}
@@ -1078,18 +1109,14 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                         {getNotificationTypeIcon(notification.notification_type)}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h4 className="text-white font-medium">
-                              {notification.title}
-                            </h4>
+                            <h4 className="text-white font-medium">{notification.title}</h4>
                             {!notification.is_read && (
                               <Badge variant="default" className="text-xs bg-cosmic-accent">
                                 New
                               </Badge>
                             )}
                           </div>
-                          <p className="text-gray-400 text-sm mt-1">
-                            {notification.message}
-                          </p>
+                          <p className="text-gray-400 text-sm mt-1">{notification.message}</p>
                           <p className="text-gray-500 text-xs mt-2">
                             {new Date(notification.created_at).toLocaleString()}
                           </p>
@@ -1127,179 +1154,184 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
             <DialogTitle className="text-white">Create Payroll Transaction</DialogTitle>
             <DialogDescription className="text-gray-400">
               Record a new payroll transaction for employee or AI agent compensation.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create-employee_id" className="text-white">
-                    Employee
-                  </Label>
-                  <Select
-                    value={transactionForm.employee_id}
-                    onValueChange={(value) =>
-                      setTransactionForm((prev) => ({
-                        ...prev,
-                        employee_id: value,
-                        agent_id: value ? '' : prev.agent_id,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
-                      <SelectValue placeholder="Select employee" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-cosmic-dark border-cosmic-light">
-                      {employees.map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id} className="text-white">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            {employee.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create-agent_id" className="text-white">
-                    AI Agent
-                  </Label>
-                  <Select
-                    value={transactionForm.agent_id}
-                    onValueChange={(value) =>
-                      setTransactionForm((prev) => ({
-                        ...prev,
-                        agent_id: value,
-                        employee_id: value ? '' : prev.employee_id,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
-                      <SelectValue placeholder="Select agent" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-cosmic-dark border-cosmic-light">
-                      {agents.map((agent) => (
-                        <SelectItem key={agent.id} value={agent.id} className="text-white">
-                          <div className="flex items-center gap-2">
-                            <Bot className="w-4 h-4" />
-                            {agent.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create-amount" className="text-white">
-                    Amount *
-                  </Label>
-                  <Input
-                    id="create-amount"
-                    type="number"
-                    step="0.01"
-                    value={transactionForm.amount}
-                    onChange={(e) =>
-                      setTransactionForm((prev) => ({ ...prev, amount: e.target.value }))
-                    }
-                    className="bg-cosmic-light border-cosmic-accent text-white"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create-status" className="text-white">
-                    Status
-                  </Label>
-                  <Select
-                    value={transactionForm.status}
-                    onValueChange={(value: any) =>
-                      setTransactionForm((prev) => ({ ...prev, status: value }))
-                    }
-                  >
-                    <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-cosmic-dark border-cosmic-light">
-                      <SelectItem value="pending" className="text-white">Pending</SelectItem>
-                      <SelectItem value="processed" className="text-white">Processed</SelectItem>
-                      <SelectItem value="paid" className="text-white">Paid</SelectItem>
-                      <SelectItem value="failed" className="text-white">Failed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create-period_start" className="text-white">
-                    Period Start
-                  </Label>
-                  <Input
-                    id="create-period_start"
-                    type="date"
-                    value={transactionForm.period_start}
-                    onChange={(e) =>
-                      setTransactionForm((prev) => ({ ...prev, period_start: e.target.value }))
-                    }
-                    className="bg-cosmic-light border-cosmic-accent text-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create-period_end" className="text-white">
-                    Period End
-                  </Label>
-                  <Input
-                    id="create-period_end"
-                    type="date"
-                    value={transactionForm.period_end}
-                    onChange={(e) =>
-                      setTransactionForm((prev) => ({ ...prev, period_end: e.target.value }))
-                    }
-                    className="bg-cosmic-light border-cosmic-accent text-white"
-                  />
-                </div>
-              </div>
-
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="create-notes" className="text-white">
-                  Notes
+                <Label htmlFor="create-employee_id" className="text-white">
+                  Employee
+                </Label>
+                <Select
+                  value={transactionForm.employee_id}
+                  onValueChange={(value) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      employee_id: value,
+                      agent_id: value ? '' : prev.agent_id,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
+                    <SelectValue placeholder="Select employee" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-cosmic-dark border-cosmic-light">
+                    {employees.map((employee) => (
+                      <SelectItem key={employee.id} value={employee.id} className="text-white">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          {employee.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-agent_id" className="text-white">
+                  AI Agent
+                </Label>
+                <Select
+                  value={transactionForm.agent_id}
+                  onValueChange={(value) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      agent_id: value,
+                      employee_id: value ? '' : prev.employee_id,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
+                    <SelectValue placeholder="Select agent" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-cosmic-dark border-cosmic-light">
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id} className="text-white">
+                        <div className="flex items-center gap-2">
+                          <Bot className="w-4 h-4" />
+                          {agent.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="create-amount" className="text-white">
+                  Amount *
                 </Label>
                 <Input
-                  id="create-notes"
-                  value={transactionForm.notes}
+                  id="create-amount"
+                  type="number"
+                  step="0.01"
+                  value={transactionForm.amount}
                   onChange={(e) =>
-                    setTransactionForm((prev) => ({ ...prev, notes: e.target.value }))
+                    setTransactionForm((prev) => ({ ...prev, amount: e.target.value }))
                   }
                   className="bg-cosmic-light border-cosmic-accent text-white"
-                  placeholder="Additional notes about this transaction"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-status" className="text-white">
+                  Status
+                </Label>
+                <Select
+                  value={transactionForm.status}
+                  onValueChange={(value: any) =>
+                    setTransactionForm((prev) => ({ ...prev, status: value }))
+                  }
+                >
+                  <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-cosmic-dark border-cosmic-light">
+                    <SelectItem value="pending" className="text-white">
+                      Pending
+                    </SelectItem>
+                    <SelectItem value="processed" className="text-white">
+                      Processed
+                    </SelectItem>
+                    <SelectItem value="paid" className="text-white">
+                      Paid
+                    </SelectItem>
+                    <SelectItem value="failed" className="text-white">
+                      Failed
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="create-period_start" className="text-white">
+                  Period Start
+                </Label>
+                <Input
+                  id="create-period_start"
+                  type="date"
+                  value={transactionForm.period_start}
+                  onChange={(e) =>
+                    setTransactionForm((prev) => ({ ...prev, period_start: e.target.value }))
+                  }
+                  className="bg-cosmic-light border-cosmic-accent text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-period_end" className="text-white">
+                  Period End
+                </Label>
+                <Input
+                  id="create-period_end"
+                  type="date"
+                  value={transactionForm.period_end}
+                  onChange={(e) =>
+                    setTransactionForm((prev) => ({ ...prev, period_end: e.target.value }))
+                  }
+                  className="bg-cosmic-light border-cosmic-accent text-white"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsCreateDialogOpen(false)}
-                className="text-white border-cosmic-accent"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateTransaction}
-                disabled={isSubmitting}
-                className="bg-cosmic-accent hover:bg-cosmic-highlight"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <Plus className="w-4 h-4 mr-2" />
-                )}
-                Create Transaction
-              </Button>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-notes" className="text-white">
+                Notes
+              </Label>
+              <Input
+                id="create-notes"
+                value={transactionForm.notes}
+                onChange={(e) => setTransactionForm((prev) => ({ ...prev, notes: e.target.value }))}
+                className="bg-cosmic-light border-cosmic-accent text-white"
+                placeholder="Additional notes about this transaction"
+              />
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsCreateDialogOpen(false)}
+              className="text-white border-cosmic-accent"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateTransaction}
+              disabled={isSubmitting}
+              className="bg-cosmic-accent hover:bg-cosmic-highlight"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Plus className="w-4 h-4 mr-2" />
+              )}
+              Create Transaction
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* Edit Transaction Dialog */}
@@ -1342,10 +1374,18 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-cosmic-dark border-cosmic-light">
-                    <SelectItem value="pending" className="text-white">Pending</SelectItem>
-                    <SelectItem value="processed" className="text-white">Processed</SelectItem>
-                    <SelectItem value="paid" className="text-white">Paid</SelectItem>
-                    <SelectItem value="failed" className="text-white">Failed</SelectItem>
+                    <SelectItem value="pending" className="text-white">
+                      Pending
+                    </SelectItem>
+                    <SelectItem value="processed" className="text-white">
+                      Processed
+                    </SelectItem>
+                    <SelectItem value="paid" className="text-white">
+                      Paid
+                    </SelectItem>
+                    <SelectItem value="failed" className="text-white">
+                      Failed
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1449,7 +1489,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                 </Label>
                 <Select
                   value={ruleForm.rate_type}
-                  onValueChange={(value: any) => setRuleForm((prev) => ({ ...prev, rate_type: value }))}
+                  onValueChange={(value: any) =>
+                    setRuleForm((prev) => ({ ...prev, rate_type: value }))
+                  }
                 >
                   <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
                     <SelectValue />
@@ -1507,7 +1549,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                   id="rule-priority"
                   type="number"
                   value={ruleForm.priority}
-                  onChange={(e) => setRuleForm((prev) => ({ ...prev, priority: parseInt(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setRuleForm((prev) => ({ ...prev, priority: parseInt(e.target.value) || 0 }))
+                  }
                   className="bg-cosmic-light border-cosmic-accent text-white"
                   placeholder="0"
                 />
@@ -1518,14 +1562,20 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                 </Label>
                 <Select
                   value={ruleForm.is_active.toString()}
-                  onValueChange={(value) => setRuleForm((prev) => ({ ...prev, is_active: value === 'true' }))}
+                  onValueChange={(value) =>
+                    setRuleForm((prev) => ({ ...prev, is_active: value === 'true' }))
+                  }
                 >
                   <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-cosmic-dark border-cosmic-light">
-                    <SelectItem value="true" className="text-white">Active</SelectItem>
-                    <SelectItem value="false" className="text-white">Inactive</SelectItem>
+                    <SelectItem value="true" className="text-white">
+                      Active
+                    </SelectItem>
+                    <SelectItem value="false" className="text-white">
+                      Inactive
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1553,7 +1603,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                   <Input
                     id="rule-department"
                     value={ruleForm.department}
-                    onChange={(e) => setRuleForm((prev) => ({ ...prev, department: e.target.value }))}
+                    onChange={(e) =>
+                      setRuleForm((prev) => ({ ...prev, department: e.target.value }))
+                    }
                     className="bg-cosmic-light border-cosmic-accent text-white"
                     placeholder="e.g., engineering"
                   />
@@ -1567,7 +1619,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                   </Label>
                   <Select
                     value={ruleForm.employee_id}
-                    onValueChange={(value) => setRuleForm((prev) => ({ ...prev, employee_id: value }))}
+                    onValueChange={(value) =>
+                      setRuleForm((prev) => ({ ...prev, employee_id: value }))
+                    }
                   >
                     <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
                       <SelectValue placeholder="Select employee" />
@@ -1612,7 +1666,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                     id="rule-effective_date"
                     type="date"
                     value={ruleForm.effective_date}
-                    onChange={(e) => setRuleForm((prev) => ({ ...prev, effective_date: e.target.value }))}
+                    onChange={(e) =>
+                      setRuleForm((prev) => ({ ...prev, effective_date: e.target.value }))
+                    }
                     className="bg-cosmic-light border-cosmic-accent text-white"
                   />
                 </div>
@@ -1624,7 +1680,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
                     id="rule-expiration_date"
                     type="date"
                     value={ruleForm.expiration_date}
-                    onChange={(e) => setRuleForm((prev) => ({ ...prev, expiration_date: e.target.value }))}
+                    onChange={(e) =>
+                      setRuleForm((prev) => ({ ...prev, expiration_date: e.target.value }))
+                    }
                     className="bg-cosmic-light border-cosmic-accent text-white"
                   />
                 </div>
@@ -1676,7 +1734,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
               </Label>
               <Select
                 value={paymentForm.payment_method}
-                onValueChange={(value: any) => setPaymentForm((prev) => ({ ...prev, payment_method: value }))}
+                onValueChange={(value: any) =>
+                  setPaymentForm((prev) => ({ ...prev, payment_method: value }))
+                }
               >
                 <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
                   <SelectValue />
@@ -1723,7 +1783,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
               <Input
                 id="payment-reference"
                 value={paymentForm.payment_reference}
-                onChange={(e) => setPaymentForm((prev) => ({ ...prev, payment_reference: e.target.value }))}
+                onChange={(e) =>
+                  setPaymentForm((prev) => ({ ...prev, payment_reference: e.target.value }))
+                }
                 className="bg-cosmic-light border-cosmic-accent text-white"
                 placeholder="Transaction ID, check number, etc."
               />
@@ -1733,7 +1795,9 @@ const Payroll: React.FC<PayrollProps> = ({ onTransactionSelect }) => {
               <div className="p-4 bg-cosmic-light rounded-lg">
                 <div className="flex justify-between items-center text-white">
                   <span>Amount:</span>
-                  <span className="font-mono font-bold">${selectedTransaction.final_amount.toFixed(2)}</span>
+                  <span className="font-mono font-bold">
+                    ${selectedTransaction.final_amount.toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-gray-400 text-sm mt-1">
                   <span>Recipient:</span>
