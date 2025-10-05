@@ -1,0 +1,7 @@
+---
+alwaysApply: false
+---
+
+**Project context:** This repository is a Supabase‑backed AI operating system scaffold. It contains pages: Mission Control, Operations Hub, Financial Nexus, AI Lab, Media Studio and Knowledge Library. Use RadialMenu and CosmicBackground components for navigation and layout consistency. All new pages must import and wrap components within the UserProvider. Use Supabase for data access.
+
+**Design conventions:** Maintain the cosmic theme with deep‑space dark backgrounds and translucent panels. For any charts or analytics, include axis titles and units. For new UI elements, prefer Tailwind utility classes and keep accessibility in mind (ARIA labels, focus states).
