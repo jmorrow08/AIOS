@@ -117,7 +117,7 @@ INSERT INTO public.company_config (key, value, description, category, is_enabled
     'discord_integration',
     '{
       "webhook_url": null,
-      "username": "AI OS Bot",
+      "username": "LytbuB Bot",
       "avatar_url": null,
       "enabled_events": ["budget", "invoice", "deliverable", "system"]
     }'::jsonb,
@@ -131,7 +131,7 @@ INSERT INTO public.company_config (key, value, description, category, is_enabled
       "provider": "sendgrid",
       "api_key": null,
       "from_email": null,
-      "from_name": "AI OS",
+      "from_name": "LytbuB",
       "enabled_events": ["budget", "invoice", "deliverable", "message"],
       "template_ids": {}
     }'::jsonb,

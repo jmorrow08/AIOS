@@ -1,0 +1,5 @@
+{
+  "name": "runpod-control",
+  "description": "Control RunPod GPU instances for AI services",
+  "version": "1.0.0"
+}

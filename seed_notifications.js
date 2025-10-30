@@ -1,5 +1,5 @@
 /**
- * Seed script for demo notifications in Jarvis HQ
+ * Seed script for demo notifications in LytbuB HQ
  * Run with: node seed_notifications.js
  */
 
@@ -110,7 +110,7 @@ async function seedNotifications() {
       },
       {
         type: 'system',
-        title: 'Welcome to Jarvis HQ',
+        title: 'Welcome to LytbuB HQ',
         body: 'Welcome! Your account has been successfully set up. Explore the platform and let us know if you need any assistance.',
         link: '/dashboard',
         read: true,

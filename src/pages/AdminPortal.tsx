@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
-import { RadialMenu } from '@/components/RadialMenu';
+import { MainNavigation } from '@/components/MainNavigation';
 import { CosmicBackground } from '@/components/CosmicBackground';
+import { RadialMenu } from '@/components/RadialMenu';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -317,11 +318,11 @@ const AdminPortal: React.FC = () => {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden flex">
+      <MainNavigation />
       <CosmicBackground />
-      <RadialMenu />
 
-      <div className="p-8 pt-24 max-w-7xl mx-auto">
+      <div className="flex-1 p-8 pt-24 max-w-7xl mx-auto">
         <div className="space-y-8">
           {/* Header */}
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 border border-white/20">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
-import { RadialMenu } from '@/components/RadialMenu';
+import { MainNavigation } from '@/components/MainNavigation';
 import { CosmicBackground } from '@/components/CosmicBackground';
 import UsageBar from '@/components/UsageBar';
 
@@ -39,10 +39,15 @@ import {
   Lock,
   AlertTriangle,
   CheckCircle,
+  Server,
+  Zap,
+  Activity,
+  Cloud,
 } from 'lucide-react';
 
 // API imports
 import { getApiUsageSummary, checkBudgetLimit } from '@/api/apiUsage';
+import { supabase } from '@/lib/supabaseClient';
 
 // Hooks
 import { useSettings } from '@/hooks/useSettings';
@@ -73,6 +78,7 @@ const Settings: React.FC = () => {
     updateBudgetSetting,
     updateModelPreference,
     updateAccountSetting,
+    updateRunPodSetting,
     refreshSettings,
   } = useSettings();
 
@@ -88,6 +94,18 @@ const Settings: React.FC = () => {
     stability_api_key: true,
     elevenlabs_api_key: true,
     stripe_secret_key: true,
+    runpod_api_key: true,
+  });
+
+  // GPU control state
+  const [gpuStatus, setGpuStatus] = useState<{
+    status: 'running' | 'stopped' | 'starting' | 'stopping' | 'unknown';
+    baseUrl: string;
+    isLoading: boolean;
+  }>({
+    status: 'unknown',
+    baseUrl: 'Local fallback',
+    isLoading: false,
   });
 
   const [budgetInfo, setBudgetInfo] = useState({
@@ -201,6 +219,17 @@ const Settings: React.FC = () => {
         updateModelPreference('creativity_temperature', formData.models.creativity_temperature),
       ];
 
+      // Save RunPod settings
+      const runpodPromises = [
+        updateRunPodSetting('enable_runpod', formData.runpod.enable_runpod),
+        updateRunPodSetting('runpod_api_key', formData.runpod.runpod_api_key),
+        updateRunPodSetting('pod_id', formData.runpod.pod_id),
+        updateRunPodSetting('ollama_enabled', formData.runpod.ollama_enabled),
+        updateRunPodSetting('comfyui_enabled', formData.runpod.comfyui_enabled),
+        updateRunPodSetting('auto_start_services', formData.runpod.auto_start_services),
+        updateRunPodSetting('preferred_provider', formData.runpod.preferred_provider),
+      ];
+
       // Save account settings
       const accountPromises = [updateAccountSetting('display_name', formData.account.display_name)];
 
@@ -209,6 +238,7 @@ const Settings: React.FC = () => {
         ...apiKeyPromises,
         ...budgetPromises,
         ...modelPromises,
+        ...runpodPromises,
         ...accountPromises,
       ]);
 
@@ -253,6 +283,84 @@ const Settings: React.FC = () => {
     return key.substring(0, 4) + '****' + key.substring(key.length - 4);
   };
 
+  // GPU control functions
+  const checkGpuStatus = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('runpod-control', {
+        method: 'GET',
+      });
+
+      if (error) {
+        console.error('Error checking GPU status:', error);
+        setGpuStatus((prev) => ({ ...prev, status: 'unknown', baseUrl: 'Local fallback' }));
+        return;
+      }
+
+      if (data?.success && data?.data) {
+        const status = data.data.status?.toLowerCase() || 'unknown';
+        const isRunning = status === 'running';
+        // If running, show "RunPod (Remote)", otherwise "Local fallback"
+        const baseUrl = isRunning ? 'RunPod (Remote)' : 'Local fallback';
+
+        setGpuStatus((prev) => ({
+          ...prev,
+          status: status as any,
+          baseUrl,
+        }));
+      } else {
+        setGpuStatus((prev) => ({ ...prev, status: 'unknown', baseUrl: 'Local fallback' }));
+      }
+    } catch (err) {
+      console.error('Failed to check GPU status:', err);
+      setGpuStatus((prev) => ({ ...prev, status: 'unknown', baseUrl: 'Local fallback' }));
+    }
+  };
+
+  const toggleGpu = async (start: boolean) => {
+    if (!formData?.runpod?.pod_id) {
+      alert('Please set a Pod ID in your RunPod settings first.');
+      return;
+    }
+
+    setGpuStatus((prev) => ({ ...prev, isLoading: true }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('runpod-control', {
+        body: {
+          action: start ? 'start' : 'stop',
+          podId: formData.runpod.pod_id,
+        },
+      });
+
+      if (error) {
+        console.error('Error toggling GPU:', error);
+        alert(`Failed to ${start ? 'start' : 'stop'} GPU: ${error.message}`);
+        return;
+      }
+
+      if (data?.success) {
+        // Update status after a short delay to allow the pod to change state
+        setTimeout(() => {
+          checkGpuStatus();
+        }, 2000);
+      } else {
+        alert(`Failed to ${start ? 'start' : 'stop'} GPU: ${data?.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Failed to toggle GPU:', err);
+      alert(`Failed to ${start ? 'start' : 'stop'} GPU: ${err.message}`);
+    } finally {
+      setGpuStatus((prev) => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Load GPU status on mount and when RunPod settings change
+  useEffect(() => {
+    if (formData?.runpod?.enable_runpod && formData?.runpod?.pod_id) {
+      checkGpuStatus();
+    }
+  }, [formData?.runpod?.enable_runpod, formData?.runpod?.pod_id]);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -264,9 +372,9 @@ const Settings: React.FC = () => {
 
   if (settingsLoading) {
     return (
-      <div className="relative min-h-screen overflow-hidden">
+      <div className="relative min-h-screen overflow-hidden flex">
+        <MainNavigation />
         <CosmicBackground />
-        <RadialMenu />
         <div className="p-8 pt-24 max-w-4xl mx-auto">
           <div className="space-y-8">
             <div className="flex items-center space-x-3">
@@ -296,11 +404,11 @@ const Settings: React.FC = () => {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden flex">
+      <MainNavigation />
       <CosmicBackground />
-      <RadialMenu />
 
-      <div className="p-8 pt-24 max-w-4xl mx-auto">
+      <div className="flex-1 p-8 pt-24 max-w-4xl mx-auto">
         <div className="space-y-8">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -352,7 +460,7 @@ const Settings: React.FC = () => {
 
           {/* Settings Tabs */}
           <Tabs defaultValue="api-keys" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-gray-800/50">
+            <TabsList className="grid w-full grid-cols-5 bg-gray-800/50">
               <TabsTrigger value="api-keys" className="flex items-center space-x-2">
                 <Key className="w-4 h-4" />
                 <span>API Keys</span>
@@ -364,6 +472,10 @@ const Settings: React.FC = () => {
               <TabsTrigger value="models" className="flex items-center space-x-2">
                 <Brain className="w-4 h-4" />
                 <span>AI Models</span>
+              </TabsTrigger>
+              <TabsTrigger value="runpod" className="flex items-center space-x-2">
+                <SettingsIcon className="w-4 h-4" />
+                <span>RunPod</span>
               </TabsTrigger>
               <TabsTrigger value="account" className="flex items-center space-x-2">
                 <User className="w-4 h-4" />
@@ -847,6 +959,342 @@ const Settings: React.FC = () => {
                       </Select>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* RunPod Tab */}
+            <TabsContent value="runpod" className="space-y-6 mt-6">
+              <Card className="bg-white/10 backdrop-blur-sm border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center space-x-2">
+                    <Server className="w-5 h-5" />
+                    <span>RunPod Configuration</span>
+                  </CardTitle>
+                  <CardDescription className="text-cosmic-blue">
+                    Configure RunPod GPU services for local AI processing. Enable Ollama and ComfyUI
+                    for cost-effective, private AI generation.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Enable RunPod */}
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="enable-runpod"
+                        className="text-white flex items-center space-x-2"
+                      >
+                        <Server className="w-4 h-4" />
+                        <span>Enable RunPod Integration</span>
+                      </Label>
+                      <p className="text-xs text-gray-400">
+                        Enable local AI processing with RunPod GPU instances
+                      </p>
+                    </div>
+                    <Switch
+                      id="enable-runpod"
+                      checked={formData?.runpod.enable_runpod || false}
+                      onCheckedChange={(checked) => updateFormData('runpod.enable_runpod', checked)}
+                    />
+                  </div>
+
+                  {/* RunPod API Key */}
+                  <div className="space-y-2">
+                    <Label htmlFor="runpod-key" className="text-white">
+                      RunPod API Key
+                    </Label>
+                    <div className="flex space-x-2">
+                      <div className="relative flex-1">
+                        <Input
+                          id="runpod-key"
+                          type={maskedKeys.runpod_api_key ? 'password' : 'text'}
+                          placeholder="rp_..."
+                          value={
+                            maskedKeys.runpod_api_key
+                              ? maskApiKey(formData?.runpod.runpod_api_key || '')
+                              : formData?.runpod.runpod_api_key || ''
+                          }
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (!maskedKeys.runpod_api_key) {
+                              updateFormData('runpod.runpod_api_key', value);
+                            }
+                          }}
+                          className="bg-white/10 border-white/20 text-white placeholder:text-gray-400"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleKeyMask('runpod_api_key')}
+                        className="border-white/20"
+                      >
+                        {maskedKeys.runpod_api_key ? (
+                          <Eye className="w-4 h-4" />
+                        ) : (
+                          <EyeOff className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      Used to manage RunPod instances and deployments
+                    </p>
+                  </div>
+
+                  {/* Pod ID */}
+                  <div className="space-y-2">
+                    <Label htmlFor="pod-id" className="text-white">
+                      Pod ID
+                    </Label>
+                    <Input
+                      id="pod-id"
+                      type="text"
+                      placeholder="abc123..."
+                      value={formData?.runpod.pod_id || ''}
+                      onChange={(e) => updateFormData('runpod.pod_id', e.target.value)}
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-400"
+                    />
+                    <p className="text-xs text-gray-400">
+                      Your RunPod pod identifier for GPU control
+                    </p>
+                  </div>
+
+                  <Separator className="bg-white/20" />
+
+                  {/* Service Configuration */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-white">Local AI Services</h3>
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="ollama-enabled"
+                          className="text-white flex items-center space-x-2"
+                        >
+                          <Brain className="w-4 h-4" />
+                          <span>Ollama (Chat & Code)</span>
+                        </Label>
+                        <p className="text-xs text-gray-400">
+                          Enable local LLM inference for chat and code generation
+                        </p>
+                      </div>
+                      <Switch
+                        id="ollama-enabled"
+                        checked={formData?.runpod.ollama_enabled || false}
+                        onCheckedChange={(checked) =>
+                          updateFormData('runpod.ollama_enabled', checked)
+                        }
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="comfyui-enabled"
+                          className="text-white flex items-center space-x-2"
+                        >
+                          <Activity className="w-4 h-4" />
+                          <span>ComfyUI (Images & Video)</span>
+                        </Label>
+                        <p className="text-xs text-gray-400">
+                          Enable local image and video generation with Stable Diffusion
+                        </p>
+                      </div>
+                      <Switch
+                        id="comfyui-enabled"
+                        checked={formData?.runpod.comfyui_enabled || false}
+                        onCheckedChange={(checked) =>
+                          updateFormData('runpod.comfyui_enabled', checked)
+                        }
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="auto-start"
+                          className="text-white flex items-center space-x-2"
+                        >
+                          <Zap className="w-4 h-4" />
+                          <span>Auto-start Services</span>
+                        </Label>
+                        <p className="text-xs text-gray-400">
+                          Automatically start RunPod instances when needed
+                        </p>
+                      </div>
+                      <Switch
+                        id="auto-start"
+                        checked={formData?.runpod.auto_start_services || false}
+                        onCheckedChange={(checked) =>
+                          updateFormData('runpod.auto_start_services', checked)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <Separator className="bg-white/20" />
+
+                  {/* GPU Control */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                      <Server className="w-5 h-5" />
+                      <span>GPU Control</span>
+                    </h3>
+
+                    {/* GPU Toggle */}
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label className="text-white flex items-center space-x-2">
+                          <Zap className="w-4 h-4" />
+                          <span>GPU On/Off</span>
+                        </Label>
+                        <p className="text-xs text-gray-400">
+                          Start or stop your RunPod GPU instance
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => toggleGpu(gpuStatus.status !== 'running')}
+                        disabled={
+                          gpuStatus.isLoading ||
+                          !formData?.runpod?.enable_runpod ||
+                          !formData?.runpod?.pod_id
+                        }
+                        className={`${
+                          gpuStatus.status === 'running'
+                            ? 'bg-red-600 hover:bg-red-700'
+                            : 'bg-green-600 hover:bg-green-700'
+                        } text-white`}
+                      >
+                        {gpuStatus.isLoading ? (
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        ) : gpuStatus.status === 'running' ? (
+                          <span>Stop GPU</span>
+                        ) : (
+                          <span>Start GPU</span>
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Status Display */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-white text-sm">Status</Label>
+                        <div className="flex items-center space-x-2">
+                          <Badge
+                            variant={gpuStatus.status === 'running' ? 'default' : 'secondary'}
+                            className={
+                              gpuStatus.status === 'running'
+                                ? 'bg-green-600 text-white'
+                                : gpuStatus.status === 'stopped'
+                                ? 'bg-gray-600 text-white'
+                                : 'bg-yellow-600 text-white'
+                            }
+                          >
+                            {gpuStatus.status === 'running' && (
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                            )}
+                            {gpuStatus.status === 'stopped' && (
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                            )}
+                            {(gpuStatus.status === 'starting' ||
+                              gpuStatus.status === 'stopping') && (
+                              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                            )}
+                            {gpuStatus.status.charAt(0).toUpperCase() + gpuStatus.status.slice(1)}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-white text-sm">Mode</Label>
+                        <div className="text-sm text-cosmic-blue">{gpuStatus.baseUrl}</div>
+                      </div>
+                    </div>
+
+                    {!formData?.runpod?.enable_runpod && (
+                      <Alert className="bg-yellow-900/20 border-yellow-500/50">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle className="text-yellow-200">Enable RunPod First</AlertTitle>
+                        <AlertDescription className="text-yellow-100">
+                          Enable RunPod integration above to control your GPU instance.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {!formData?.runpod?.pod_id && formData?.runpod?.enable_runpod && (
+                      <Alert className="bg-yellow-900/20 border-yellow-500/50">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle className="text-yellow-200">Set Pod ID</AlertTitle>
+                        <AlertDescription className="text-yellow-100">
+                          Enter your RunPod Pod ID above to enable GPU control.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+
+                  <Separator className="bg-white/20" />
+
+                  {/* Provider Preferences */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-white">Provider Preferences</h3>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="preferred-provider" className="text-white">
+                        Default AI Provider
+                      </Label>
+                      <Select
+                        value={formData?.runpod.preferred_provider || 'api'}
+                        onValueChange={(value) =>
+                          updateFormData('runpod.preferred_provider', value)
+                        }
+                      >
+                        <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="local">
+                            <div>
+                              <div className="font-medium">Local First</div>
+                              <div className="text-xs text-gray-400">
+                                Prefer RunPod services, fallback to APIs
+                              </div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="api">
+                            <div>
+                              <div className="font-medium">API First</div>
+                              <div className="text-xs text-gray-400">
+                                Prefer cloud APIs, use local as backup
+                              </div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="auto">
+                            <div>
+                              <div className="font-medium">Auto Balance</div>
+                              <div className="text-xs text-gray-400">
+                                Smart routing based on cost and availability
+                              </div>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-400">
+                        Choose how the system routes AI requests between local and cloud services
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Information */}
+                  <Alert className="bg-blue-900/20 border-blue-500/50">
+                    <Cloud className="h-4 w-4" />
+                    <AlertTitle className="text-blue-200">Service Status</AlertTitle>
+                    <AlertDescription className="text-blue-100">
+                      {formData?.runpod.enable_runpod
+                        ? 'RunPod integration is enabled. Local AI services will be used when available.'
+                        : 'RunPod integration is disabled. Only cloud API services will be used.'}
+                    </AlertDescription>
+                  </Alert>
                 </CardContent>
               </Card>
             </TabsContent>

@@ -472,7 +472,7 @@ export const testWebhook = async (service: 'zapier' | 'tasker'): Promise<HookRes
   const testPayload = {
     test: true,
     timestamp: new Date().toISOString(),
-    message: 'Test webhook from AI OS',
+    message: 'Test webhook from LytbuB',
   };
 
   if (service === 'zapier') {

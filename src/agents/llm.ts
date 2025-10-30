@@ -93,6 +93,8 @@ const mapProviderToService = (provider: LLMProvider): string => {
       return 'anthropic';
     case 'gemini':
       return 'google-gemini';
+    case 'ollama':
+      return 'runpod'; // Ollama uses runpod service config
     default:
       return provider;
   }
@@ -115,6 +117,8 @@ const getFallbackApiKey = (provider: LLMProvider, apiKeyRef?: string): string | 
       return import.meta.env.VITE_ANTHROPIC_API_KEY || null;
     case 'gemini':
       return import.meta.env.VITE_GOOGLE_AI_API_KEY || null;
+    case 'ollama':
+      return import.meta.env.VITE_RUNPOD_BASE_URL || null;
     default:
       return null;
   }
@@ -424,6 +428,120 @@ export const sendGeminiMessage = async (
 };
 
 /**
+ * Send message to Ollama (local LLM via Runpod/Ollama API) with budget checking and usage logging
+ */
+export const sendOllamaMessage = async (
+  apiBaseUrl: string,
+  model: string,
+  prompt: string,
+  task: string,
+  options: LLMCallOptions = {},
+): Promise<LLMResponse> => {
+  try {
+    // For local Ollama models, we use a very low cost estimate (essentially free)
+    const estimatedInputTokens = Math.ceil((prompt.length + task.length) / 4);
+    const estimatedOutputTokens = 1000; // Conservative estimate for local models
+    const costCalc = { cost: 0, tokens_used: estimatedInputTokens + estimatedOutputTokens };
+
+    // Check budget before proceeding (though cost is 0 for local models)
+    if (!options.skipBudgetCheck) {
+      const budgetCheck = await checkBudgetBeforeAction('Ollama', costCalc.cost, options.agentId);
+      if (budgetCheck.error) {
+        return {
+          content: '',
+          error: `Budget check failed: ${budgetCheck.error}`,
+        };
+      }
+      if (!budgetCheck.data?.can_proceed) {
+        return {
+          content: '',
+          error: `Budget exceeded. Current spend: $${budgetCheck.data?.current_spend?.toFixed(
+            2,
+          )}, Limit: $${budgetCheck.data?.budget_limit?.toFixed(2)}`,
+        };
+      }
+    }
+
+    // Prepare the Ollama API request
+    const ollamaUrl = `${apiBaseUrl.replace(/\/$/, '')}/api/generate`;
+    const requestBody = {
+      model: model || 'llama2',
+      prompt: `${prompt}\n\n${task}`,
+      stream: false,
+      options: {
+        temperature: 0.7,
+        top_p: 0.9,
+        num_predict: 1000, // Limit response length
+      },
+    };
+
+    const response = await fetch(ollamaUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.response) {
+      return {
+        content: '',
+        error: 'No response from Ollama',
+      };
+    }
+
+    // Calculate token usage (rough estimate since Ollama doesn't provide exact counts)
+    const actualInputTokens = Math.ceil((prompt.length + task.length) / 4);
+    const actualOutputTokens = Math.ceil(data.response.length / 4);
+    const actualCostCalc = { cost: 0, tokens_used: actualInputTokens + actualOutputTokens };
+
+    // Log usage if not skipped
+    if (!options.skipUsageLogging) {
+      await logApiUsageAndUpdateBudget({
+        service: 'Ollama',
+        agent_id: options.agentId,
+        agent: options.agentName,
+        description: `LLM call: ${model}`,
+        cost: actualCostCalc.cost,
+        tokens_used: actualCostCalc.tokens_used,
+        metadata: {
+          model,
+          api_base_url: apiBaseUrl,
+          input_tokens: actualInputTokens,
+          output_tokens: actualOutputTokens,
+          prompt_length: prompt.length,
+          task_length: task.length,
+          response_length: data.response.length,
+          eval_count: data.eval_count,
+          eval_duration: data.eval_duration,
+        },
+      });
+    }
+
+    return {
+      content: data.response,
+      usage: {
+        tokens_used: actualCostCalc.tokens_used,
+        cost: actualCostCalc.cost,
+        service: 'Ollama',
+      },
+    };
+  } catch (error) {
+    console.error('Ollama API error:', error);
+    return {
+      content: '',
+      error: error instanceof Error ? error.message : 'Unknown Ollama error',
+    };
+  }
+};
+
+/**
  * Send message to LLM based on provider configuration with budget checking and usage logging
  */
 export const sendLLMMessage = async (
@@ -451,6 +569,8 @@ export const sendLLMMessage = async (
       return await sendClaudeMessage(apiKey, model, prompt, task, options);
     case 'gemini':
       return await sendGeminiMessage(apiKey, model, prompt, task, options);
+    case 'ollama':
+      return await sendOllamaMessage(apiKey, model, prompt, task, options);
     default:
       return {
         content: '',
@@ -492,6 +612,8 @@ export const getDefaultModel = (provider: LLMProvider): string => {
       return 'claude-3-sonnet-20240229';
     case 'gemini':
       return 'gemini-pro';
+    case 'ollama':
+      return 'llama2';
     default:
       return '';
   }

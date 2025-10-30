@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { CosmicBackground } from '@/components/CosmicBackground';
-import { RadialMenu } from '@/components/RadialMenu';
+import { MainNavigation } from '@/components/MainNavigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -114,6 +114,15 @@ const MediaStudio: React.FC = () => {
   const [mediaProjects, setMediaProjects] = useState<MediaProject[]>([]);
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Schedule Post Dialog state
+  const [schedulePostDialogOpen, setSchedulePostDialogOpen] = useState(false);
+  const [schedulePostData, setSchedulePostData] = useState({
+    platform: 'twitter',
+    content: '',
+    scheduledAt: '',
+    mediaAssetId: '',
+  });
 
   // API Keys state
   const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>({
@@ -549,6 +558,80 @@ const MediaStudio: React.FC = () => {
       await generateSceneAudio(i);
     }
     updateProject({ currentVideoStep: 'preview' });
+  };
+
+  // Schedule a social media post
+  const schedulePost = async () => {
+    if (!schedulePostData.content.trim() || !schedulePostData.scheduledAt) {
+      alert('Please provide content and schedule time');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      // Get current user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Please log in to schedule posts');
+        return;
+      }
+
+      // Get user's company
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!userData?.company_id) {
+        alert('User company not found');
+        return;
+      }
+
+      // Insert into scheduled_posts table
+      const { data, error } = await supabase
+        .from('scheduled_posts')
+        .insert({
+          company_id: userData.company_id,
+          platform: schedulePostData.platform,
+          content: schedulePostData.content,
+          media_asset_id: schedulePostData.mediaAssetId || null,
+          scheduled_at: new Date(schedulePostData.scheduledAt).toISOString(),
+          status: 'pending',
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error scheduling post:', error);
+        alert('Failed to schedule post: ' + error.message);
+        return;
+      }
+
+      // Reset form and close dialog
+      setSchedulePostData({
+        platform: 'twitter',
+        content: '',
+        scheduledAt: '',
+        mediaAssetId: '',
+      });
+      setSchedulePostDialogOpen(false);
+
+      alert(
+        `Post scheduled successfully for ${new Date(
+          schedulePostData.scheduledAt,
+        ).toLocaleString()}`,
+      );
+    } catch (error) {
+      console.error('Error scheduling post:', error);
+      alert('Failed to schedule post');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Timeline management functions
@@ -1563,11 +1646,11 @@ const MediaStudio: React.FC = () => {
   );
 
   return (
-    <div className="relative min-h-screen bg-cosmic-dark text-white">
+    <div className="relative min-h-screen bg-cosmic-dark text-white flex">
+      <MainNavigation />
       <CosmicBackground />
-      <RadialMenu />
 
-      <div className="relative z-10 p-8">
+      <div className="flex-1 relative z-10 p-8">
         <div className="mb-8">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -1856,6 +1939,123 @@ const MediaStudio: React.FC = () => {
 
           {/* Exports Tab */}
           <TabsContent value="exports" className="space-y-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-white">Export & Social Media</h2>
+              <Dialog open={schedulePostDialogOpen} onOpenChange={setSchedulePostDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-green-600 hover:bg-green-700 text-white">
+                    📅 Schedule Post
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl bg-cosmic-dark border-cosmic-light">
+                  <DialogHeader>
+                    <DialogTitle className="text-white">Schedule Social Media Post</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="platform" className="text-white">
+                        Platform
+                      </Label>
+                      <Select
+                        value={schedulePostData.platform}
+                        onValueChange={(value) =>
+                          setSchedulePostData({ ...schedulePostData, platform: value })
+                        }
+                      >
+                        <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="twitter">Twitter</SelectItem>
+                          <SelectItem value="linkedin">LinkedIn</SelectItem>
+                          <SelectItem value="facebook">Facebook</SelectItem>
+                          <SelectItem value="instagram">Instagram</SelectItem>
+                          <SelectItem value="tiktok">TikTok</SelectItem>
+                          <SelectItem value="youtube">YouTube</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="content" className="text-white">
+                        Content
+                      </Label>
+                      <Textarea
+                        id="content"
+                        value={schedulePostData.content}
+                        onChange={(e) =>
+                          setSchedulePostData({ ...schedulePostData, content: e.target.value })
+                        }
+                        placeholder="What's on your mind?"
+                        className="bg-cosmic-light border-cosmic-accent text-white placeholder:text-gray-400 min-h-24"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="scheduledAt" className="text-white">
+                        Schedule Time
+                      </Label>
+                      <Input
+                        id="scheduledAt"
+                        type="datetime-local"
+                        value={schedulePostData.scheduledAt}
+                        onChange={(e) =>
+                          setSchedulePostData({ ...schedulePostData, scheduledAt: e.target.value })
+                        }
+                        className="bg-cosmic-light border-cosmic-accent text-white"
+                        min={new Date().toISOString().slice(0, 16)}
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="mediaAsset" className="text-white">
+                        Attach Media (Optional)
+                      </Label>
+                      <Select
+                        value={schedulePostData.mediaAssetId}
+                        onValueChange={(value) =>
+                          setSchedulePostData({ ...schedulePostData, mediaAssetId: value })
+                        }
+                      >
+                        <SelectTrigger className="bg-cosmic-light border-cosmic-accent text-white">
+                          <SelectValue placeholder="Select media asset..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">No media</SelectItem>
+                          {mediaAssets.map((asset) => (
+                            <SelectItem key={asset.id} value={asset.id}>
+                              {asset.name} ({asset.type})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex justify-end space-x-2 pt-4">
+                      <Button
+                        variant="outline"
+                        onClick={() => setSchedulePostDialogOpen(false)}
+                        className="border-cosmic-light text-cosmic-light"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={schedulePost}
+                        disabled={
+                          isLoading ||
+                          !schedulePostData.content.trim() ||
+                          !schedulePostData.scheduledAt
+                        }
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        {isLoading ? 'Scheduling...' : 'Schedule Post'}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
             <ExportPanel
               timelineState={studioState.timelineState}
               exportOptions={project.exportOptions}

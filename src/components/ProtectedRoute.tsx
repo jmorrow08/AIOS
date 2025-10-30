@@ -14,8 +14,18 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
   const { user, role, loading, error } = useUser();
   const location = useLocation();
 
+  console.log('🔒 ProtectedRoute check:', {
+    path: location.pathname,
+    user: !!user,
+    role,
+    loading,
+    error,
+    requiredRole,
+  });
+
   // Show loading state
   if (loading) {
+    console.log('⏳ ProtectedRoute: Still loading user data...');
     return (
       <div className="relative min-h-screen bg-cosmic-dark text-white">
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
@@ -32,6 +42,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
 
   // Show error state
   if (error) {
+    console.log('❌ ProtectedRoute: Authentication error:', error);
     return (
       <div className="relative min-h-screen bg-cosmic-dark text-white">
         <div className="relative z-10 flex items-center justify-center min-h-screen p-8">
@@ -47,41 +58,23 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
 
   // Redirect to auth if not authenticated
   if (!user) {
+    console.log('🚫 ProtectedRoute: User not authenticated, redirecting to /auth');
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Redirect based on role if role doesn't match requirement
-  if (requiredRole && role !== requiredRole) {
-    switch (role) {
-      case 'admin':
-        return <Navigate to="/admin" replace />;
-      case 'client':
-        return <Navigate to="/portal" replace />;
-      case 'agent':
-        return <Navigate to="/lab" replace />;
-      case 'marketing_agent':
-        return <Navigate to="/marketing" replace />;
-      default:
-        return <Navigate to="/auth" replace />;
-    }
+  // Root path → redirect based on role
+  if (location.pathname === '/' && user) {
+    const dashboardRoutes = {
+      admin: '/admin',
+      client: '/portal',
+      agent: '/ai',
+      marketing_agent: '/marketing',
+    };
+    const targetRoute = dashboardRoutes[role as keyof typeof dashboardRoutes] || '/mission-control';
+    return <Navigate to={targetRoute} replace />;
   }
 
-  // Role-based routing for root path
-  if (location.pathname === '/' && role) {
-    switch (role) {
-      case 'admin':
-        return <Navigate to="/admin" replace />;
-      case 'client':
-        return <Navigate to="/portal" replace />;
-      case 'agent':
-        return <Navigate to="/lab" replace />;
-      case 'marketing_agent':
-        return <Navigate to="/marketing" replace />;
-      default:
-        return <Navigate to="/auth" replace />;
-    }
-  }
-
+  console.log('✅ ProtectedRoute: Access granted, rendering component');
   return <>{children}</>;
 };
 

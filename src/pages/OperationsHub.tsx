@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
+import { MainNavigation } from '@/components/MainNavigation';
 import { RadialMenu } from '@/components/RadialMenu';
 import { CosmicBackground } from '@/components/CosmicBackground';
 
@@ -1274,13 +1275,12 @@ Keep your response concise but comprehensive.`;
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden flex">
+      <MainNavigation />
       {/* cosmic background */}
       <CosmicBackground />
-      {/* radial menu */}
-      <RadialMenu />
       {/* main content */}
-      <div className="p-8 pt-24 max-w-7xl mx-auto">
+      <div className="flex-1 p-8 pt-24 max-w-7xl mx-auto">
         <div className="space-y-6">
           <div>
             <h1 className="text-3xl font-bold text-white">Operations Hub</h1>

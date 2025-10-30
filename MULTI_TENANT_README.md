@@ -1,6 +1,6 @@
 # Multi-Tenant Architecture
 
-This document describes the multi-tenant architecture implementation in the AI OS Supabase Shell, including company data isolation, Row Level Security (RLS) policies, and administrative controls.
+This document describes the multi-tenant architecture implementation in the LytbuB Supabase Shell, including company data isolation, Row Level Security (RLS) policies, and administrative controls.
 
 ## Overview
 

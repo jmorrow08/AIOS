@@ -12,12 +12,12 @@ const HeyGenAvatarWidget: React.FC = () => {
 
   const greetings = user
     ? [
-        `Welcome back, ${user.email?.split('@')[0]}! Ready to explore Jarvis HQ?`,
+        `Welcome back, ${user.email?.split('@')[0]}! Ready to explore LytbuB HQ?`,
         "I'm your AI assistant, here to help streamline your operations",
         'Would you like to see a demo of our latest AI capabilities?',
       ]
     : [
-        "Hello! I'm Jarvis, your intelligent business companion",
+        "Hello! I'm LytbuB Assistant, your intelligent business companion",
         'Welcome to the future of business operations',
         "Do you want a demo? I'd love to show you around!",
       ];

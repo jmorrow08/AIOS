@@ -1,4 +1,4 @@
--- Create notifications table for Jarvis HQ
+-- Create notifications table for LytbuB HQ
 -- This table stores all system notifications for users
 
 CREATE TABLE IF NOT EXISTS public.notifications (

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useUser } from '@/context/UserContext';
+import { MainNavigation } from '@/components/MainNavigation';
 import { CosmicBackground } from '@/components/CosmicBackground';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -456,9 +457,10 @@ const Collaboration: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex">
+      <MainNavigation />
       <CosmicBackground />
-      <div className="relative z-10 p-6">
+      <div className="flex-1 relative z-10 p-6">
         <div className="max-w-7xl mx-auto">
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-2">

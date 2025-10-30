@@ -1,10 +1,10 @@
 # Webhooks & Automation Hooks
 
-This document describes the webhook system for integrating AI OS with external automation services like Zapier and Tasker.
+This document describes the webhook system for integrating LytbuB with external automation services like Zapier and Tasker.
 
 ## Overview
 
-The webhook system allows AI OS to automatically trigger events in external services when certain actions occur within the application. This enables seamless automation workflows for notifications, data synchronization, and business process automation.
+The webhook system allows LytbuB to automatically trigger events in external services when certain actions occur within the application. This enables seamless automation workflows for notifications, data synchronization, and business process automation.
 
 ## Supported Services
 

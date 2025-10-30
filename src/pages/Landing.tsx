@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MainNavigation } from '@/components/MainNavigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { CosmicBackground } from '@/components/CosmicBackground';
@@ -20,11 +21,19 @@ const Landing: React.FC = () => {
 
   const menuItems: MenuItem[] = [
     {
+      id: 'mission-control',
+      title: 'Mission Control',
+      description: 'Central command center and dashboard overview',
+      icon: '🚀',
+      color: 'from-cosmic-accent to-blue-500',
+      path: '/mission-control',
+    },
+    {
       id: 'ai-agents',
       title: 'AI Agents',
       description: 'Intelligent automation agents that handle complex workflows',
       icon: '🤖',
-      color: 'from-cosmic-accent to-blue-500',
+      color: 'from-cyan-400 to-cosmic-accent',
       path: '/lab',
     },
     {
@@ -32,15 +41,15 @@ const Landing: React.FC = () => {
       title: 'Agent Marketplace',
       description: 'Browse, install, and customize AI agent templates',
       icon: '🛒',
-      color: 'from-cyan-400 to-cosmic-accent',
+      color: 'from-purple-400 to-cosmic-accent',
       path: '/marketplace',
     },
     {
       id: 'knowledge',
-      title: 'Knowledge',
+      title: 'Knowledge Library',
       description: 'AI-powered knowledge library and document processing',
       icon: '📚',
-      color: 'from-purple-400 to-cosmic-accent',
+      color: 'from-pink-400 to-red-500',
       path: '/library',
     },
     {
@@ -48,38 +57,102 @@ const Landing: React.FC = () => {
       title: 'Media Studio',
       description: 'Professional media production and content creation tools',
       icon: '🎬',
-      color: 'from-pink-400 to-red-500',
+      color: 'from-green-400 to-cosmic-accent',
       path: '/media',
     },
     {
       id: 'automation',
-      title: 'Automation',
-      description: 'Streamlined operations and workflow automation',
+      title: 'Automation Builder',
+      description: 'Create and manage workflow automation',
       icon: '⚡',
-      color: 'from-green-400 to-cosmic-accent',
+      color: 'from-indigo-400 to-purple-600',
+      path: '/automation',
+    },
+    {
+      id: 'operations',
+      title: 'Operations Hub',
+      description: 'Streamlined operations and workflow management',
+      icon: '🏭',
+      color: 'from-yellow-400 to-orange-500',
       path: '/operations',
     },
     {
-      id: 'services',
-      title: 'Services',
+      id: 'finance',
+      title: 'Financial Nexus',
+      description: 'Advanced financial tracking and invoice management',
+      icon: '💰',
+      color: 'from-red-400 to-pink-500',
+      path: '/finance',
+    },
+    {
+      id: 'analytics',
+      title: 'Analytics Dashboard',
+      description: 'Comprehensive business insights and performance metrics',
+      icon: '📊',
+      color: 'from-teal-400 to-cyan-500',
+      path: '/analytics',
+    },
+    {
+      id: 'collaboration',
+      title: 'Collaboration',
+      description: 'Real-time collaborative workspace and communication',
+      icon: '👥',
+      color: 'from-orange-400 to-red-500',
+      path: '/collaboration',
+    },
+    {
+      id: 'whiteboard',
+      title: 'Whiteboard',
+      description: 'Interactive visual collaboration and brainstorming',
+      icon: '🖼️',
+      color: 'from-lime-400 to-green-500',
+      path: '/whiteboard',
+    },
+    {
+      id: 'admin-portal',
+      title: 'Admin Portal',
+      description: 'System administration and user management',
+      icon: '⚙️',
+      color: 'from-slate-400 to-gray-500',
+      path: '/admin',
+    },
+    {
+      id: 'client-portal',
+      title: 'Client Portal',
       description: 'Client management and service delivery platform',
       icon: '🏢',
-      color: 'from-indigo-400 to-purple-600',
+      color: 'from-emerald-400 to-teal-500',
       path: '/portal',
     },
     {
-      id: 'finance',
-      title: 'Finance',
-      description: 'Advanced financial tracking and invoice management',
-      icon: '💰',
-      color: 'from-yellow-400 to-orange-500',
-      path: '/finance',
+      id: 'marketing',
+      title: 'Marketing Hub',
+      description: 'Marketing campaigns and customer engagement',
+      icon: '📢',
+      color: 'from-rose-400 to-pink-500',
+      path: '/marketing',
+    },
+    {
+      id: 'chat',
+      title: 'AI Chat',
+      description: 'Direct AI conversation and assistance',
+      icon: '💬',
+      color: 'from-violet-400 to-purple-500',
+      path: '/ai',
+    },
+    {
+      id: 'settings',
+      title: 'Settings',
+      description: 'System configuration and preferences',
+      icon: '🔧',
+      color: 'from-stone-400 to-slate-500',
+      path: '/settings',
     },
   ];
 
   const getPosition = (index: number, total: number) => {
     const angle = (360 / total) * index - 90; // Start from top
-    const radius = 200; // Distance from center
+    const radius = 250; // Distance from center - increased for more items
     const radian = (angle * Math.PI) / 180;
 
     return {
@@ -160,7 +233,7 @@ const Landing: React.FC = () => {
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.8, type: 'spring' }}
           >
-            Jarvis
+            LytbuB
             <motion.span
               className="block text-3xl md:text-4xl text-cosmic-highlight font-light mt-2"
               initial={{ opacity: 0 }}
@@ -276,7 +349,7 @@ const Landing: React.FC = () => {
             >
               <motion.span className="flex items-center gap-3" whileHover={{ gap: 12 }}>
                 <span>🚀</span>
-                <span>Enter Jarvis HQ</span>
+                <span>Enter LytbuB HQ</span>
                 <span>→</span>
               </motion.span>
             </Button>

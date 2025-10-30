@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useUser } from '@/context/UserContext';
+import { MainNavigation } from '@/components/MainNavigation';
 import {
   getAgentTemplates,
   getAgentTemplatesByCategory,
@@ -604,258 +605,261 @@ const AgentMarketplace: React.FC = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-cosmic-dark">
-      {/* Header */}
-      <div className="p-6 border-b border-cosmic-light">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Agent Marketplace</h1>
-            <p className="text-gray-400 mt-1">
-              Discover, customize, and install AI agents for your team
-            </p>
+    <div className="h-screen flex bg-cosmic-dark">
+      <MainNavigation />
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b border-cosmic-light">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Agent Marketplace</h1>
+              <p className="text-gray-400 mt-1">
+                Discover, customize, and install AI agents for your team
+              </p>
+            </div>
+            {role === 'admin' && (
+              <Button
+                onClick={() => setPublishModalOpen(true)}
+                className="bg-cosmic-accent hover:bg-cosmic-highlight"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Publish Template
+              </Button>
+            )}
           </div>
-          {role === 'admin' && (
-            <Button
-              onClick={() => setPublishModalOpen(true)}
-              className="bg-cosmic-accent hover:bg-cosmic-highlight"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Publish Template
-            </Button>
-          )}
         </div>
-      </div>
 
-      {/* Main Content */}
-      <Tabs defaultValue="available" className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-2 mx-6 mt-4">
-          <TabsTrigger value="available">Available Agents</TabsTrigger>
-          <TabsTrigger value="my-agents">My Agents ({myAgents.length})</TabsTrigger>
-        </TabsList>
+        {/* Main Content */}
+        <Tabs defaultValue="available" className="flex-1 flex flex-col">
+          <TabsList className="grid w-full grid-cols-2 mx-6 mt-4">
+            <TabsTrigger value="available">Available Agents</TabsTrigger>
+            <TabsTrigger value="my-agents">My Agents ({myAgents.length})</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="available" className="flex-1 flex flex-col overflow-hidden">
-          {/* Search and Filters */}
-          <div className="p-6 border-b border-cosmic-light">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search agents by name, role, or description..."
-                    className="pl-10 bg-cosmic-light text-white border-cosmic-accent"
-                  />
+          <TabsContent value="available" className="flex-1 flex flex-col overflow-hidden">
+            {/* Search and Filters */}
+            <div className="p-6 border-b border-cosmic-light">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search agents by name, role, or description..."
+                      className="pl-10 bg-cosmic-light text-white border-cosmic-accent"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex gap-2">
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-40 bg-cosmic-light text-white border-cosmic-accent">
-                    <Filter className="w-4 h-4 mr-2" />
-                    <SelectValue placeholder="Category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-40 bg-cosmic-light text-white border-cosmic-accent">
+                      <Filter className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                <div className="flex border border-cosmic-light rounded">
-                  <Button
-                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('grid')}
-                    className="rounded-r-none"
-                  >
-                    <Grid3X3 className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant={viewMode === 'list' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('list')}
-                    className="rounded-l-none"
-                  >
-                    <List className="w-4 h-4" />
-                  </Button>
+                  <div className="flex border border-cosmic-light rounded">
+                    <Button
+                      variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setViewMode('grid')}
+                      className="rounded-r-none"
+                    >
+                      <Grid3X3 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant={viewMode === 'list' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setViewMode('list')}
+                      className="rounded-l-none"
+                    >
+                      <List className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Templates Grid/List */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {filteredTemplates.length === 0 ? (
-              <div className="text-center py-12">
-                <Bot className="w-16 h-16 mx-auto mb-4 text-gray-400 opacity-50" />
-                <h3 className="text-xl font-semibold text-white mb-2">No agents found</h3>
-                <p className="text-gray-400 mb-4">
-                  {searchQuery || categoryFilter !== 'all'
-                    ? 'Try adjusting your search or filters'
-                    : 'No agent templates are currently available'}
-                </p>
-                {(searchQuery || categoryFilter !== 'all') && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSearchQuery('');
-                      setCategoryFilter('all');
-                    }}
-                  >
-                    Clear Filters
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div
-                className={
-                  viewMode === 'grid'
-                    ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
-                    : 'space-y-4'
-                }
-              >
-                {filteredTemplates.map((template) => (
-                  <Card
-                    key={template.id}
-                    className="bg-cosmic-light border-cosmic-accent/20 hover:border-cosmic-accent/50 transition-all duration-200"
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle className="text-white text-lg">{template.name}</CardTitle>
-                          <CardDescription className="text-gray-400 capitalize">
-                            {template.role.replace('_', ' ')}
-                          </CardDescription>
-                        </div>
-                        {template.category && (
-                          <Badge className={getCategoryColor(template.category)}>
-                            {template.category.replace('_', ' ')}
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-
-                    <CardContent className="pb-3">
-                      {template.description && (
-                        <p className="text-gray-300 text-sm mb-3 line-clamp-2">
-                          {template.description}
-                        </p>
-                      )}
-
-                      <div className="flex items-center justify-between text-sm text-gray-400 mb-3">
-                        <div className="flex items-center">
-                          <Zap className="w-4 h-4 mr-1" />
-                          <span>{template.default_model}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <DollarSign className="w-4 h-4 mr-1" />
-                          <span>${template.cost_estimate}/mo</span>
-                        </div>
-                      </div>
-
-                      {template.tags && template.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {template.tags.slice(0, 3).map((tag) => (
-                            <Badge key={tag} variant="outline" className="text-xs">
-                              <Tag className="w-3 h-3 mr-1" />
-                              {tag}
-                            </Badge>
-                          ))}
-                          {template.tags.length > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{template.tags.length - 3}
+            {/* Templates Grid/List */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {filteredTemplates.length === 0 ? (
+                <div className="text-center py-12">
+                  <Bot className="w-16 h-16 mx-auto mb-4 text-gray-400 opacity-50" />
+                  <h3 className="text-xl font-semibold text-white mb-2">No agents found</h3>
+                  <p className="text-gray-400 mb-4">
+                    {searchQuery || categoryFilter !== 'all'
+                      ? 'Try adjusting your search or filters'
+                      : 'No agent templates are currently available'}
+                  </p>
+                  {(searchQuery || categoryFilter !== 'all') && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setCategoryFilter('all');
+                      }}
+                    >
+                      Clear Filters
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className={
+                    viewMode === 'grid'
+                      ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
+                      : 'space-y-4'
+                  }
+                >
+                  {filteredTemplates.map((template) => (
+                    <Card
+                      key={template.id}
+                      className="bg-cosmic-light border-cosmic-accent/20 hover:border-cosmic-accent/50 transition-all duration-200"
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle className="text-white text-lg">{template.name}</CardTitle>
+                            <CardDescription className="text-gray-400 capitalize">
+                              {template.role.replace('_', ' ')}
+                            </CardDescription>
+                          </div>
+                          {template.category && (
+                            <Badge className={getCategoryColor(template.category)}>
+                              {template.category.replace('_', ' ')}
                             </Badge>
                           )}
                         </div>
-                      )}
-                    </CardContent>
+                      </CardHeader>
 
-                    <CardFooter>
-                      <Button
-                        onClick={() => {
-                          setSelectedTemplate(template);
-                          setConfigModalOpen(true);
-                        }}
-                        disabled={installingAgent === template.id}
-                        className="w-full bg-cosmic-accent hover:bg-cosmic-highlight"
-                      >
-                        {installingAgent === template.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Installing...
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-4 h-4 mr-2" />
-                            Install Agent
-                          </>
+                      <CardContent className="pb-3">
+                        {template.description && (
+                          <p className="text-gray-300 text-sm mb-3 line-clamp-2">
+                            {template.description}
+                          </p>
                         )}
+
+                        <div className="flex items-center justify-between text-sm text-gray-400 mb-3">
+                          <div className="flex items-center">
+                            <Zap className="w-4 h-4 mr-1" />
+                            <span>{template.default_model}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <DollarSign className="w-4 h-4 mr-1" />
+                            <span>${template.cost_estimate}/mo</span>
+                          </div>
+                        </div>
+
+                        {template.tags && template.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {template.tags.slice(0, 3).map((tag) => (
+                              <Badge key={tag} variant="outline" className="text-xs">
+                                <Tag className="w-3 h-3 mr-1" />
+                                {tag}
+                              </Badge>
+                            ))}
+                            {template.tags.length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{template.tags.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+
+                      <CardFooter>
+                        <Button
+                          onClick={() => {
+                            setSelectedTemplate(template);
+                            setConfigModalOpen(true);
+                          }}
+                          disabled={installingAgent === template.id}
+                          className="w-full bg-cosmic-accent hover:bg-cosmic-highlight"
+                        >
+                          {installingAgent === template.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Installing...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-4 h-4 mr-2" />
+                              Install Agent
+                            </>
+                          )}
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="my-agents" className="flex-1">
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {myAgents.map((agent) => (
+                  <Card key={agent.id} className="bg-cosmic-light border-cosmic-accent/20">
+                    <CardHeader>
+                      <CardTitle className="text-white">{agent.name}</CardTitle>
+                      <CardDescription className="text-gray-400 capitalize">
+                        {agent.role.replace('_', ' ')}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                          <span className="text-sm text-gray-400">Active</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {agent.llm_provider} - {agent.llm_model}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button variant="outline" size="sm" className="w-full">
+                        <Settings className="w-4 h-4 mr-2" />
+                        Configure
                       </Button>
                     </CardFooter>
                   </Card>
                 ))}
               </div>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="my-agents" className="flex-1">
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {myAgents.map((agent) => (
-                <Card key={agent.id} className="bg-cosmic-light border-cosmic-accent/20">
-                  <CardHeader>
-                    <CardTitle className="text-white">{agent.name}</CardTitle>
-                    <CardDescription className="text-gray-400 capitalize">
-                      {agent.role.replace('_', ' ')}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
-                        <span className="text-sm text-gray-400">Active</span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {agent.llm_provider} - {agent.llm_model}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                  <CardFooter>
-                    <Button variant="outline" size="sm" className="w-full">
-                      <Settings className="w-4 h-4 mr-2" />
-                      Configure
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
             </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+          </TabsContent>
+        </Tabs>
 
-      {/* Agent Configuration Modal */}
-      <AgentConfigModal
-        template={selectedTemplate}
-        isOpen={configModalOpen}
-        onClose={() => {
-          setConfigModalOpen(false);
-          setSelectedTemplate(null);
-        }}
-        onInstall={handleInstallAgent}
-      />
+        {/* Agent Configuration Modal */}
+        <AgentConfigModal
+          template={selectedTemplate}
+          isOpen={configModalOpen}
+          onClose={() => {
+            setConfigModalOpen(false);
+            setSelectedTemplate(null);
+          }}
+          onInstall={handleInstallAgent}
+        />
 
-      {/* Publish Template Modal */}
-      <PublishTemplateModal
-        isOpen={publishModalOpen}
-        onClose={() => setPublishModalOpen(false)}
-        onPublish={handlePublishTemplate}
-      />
+        {/* Publish Template Modal */}
+        <PublishTemplateModal
+          isOpen={publishModalOpen}
+          onClose={() => setPublishModalOpen(false)}
+          onPublish={handlePublishTemplate}
+        />
+      </div>
     </div>
   );
 };

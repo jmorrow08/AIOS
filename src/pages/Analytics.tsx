@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MainNavigation } from '@/components/MainNavigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -186,275 +187,434 @@ const Analytics: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cosmic-dark via-cosmic-light to-cosmic-accent p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-cosmic-highlight mb-2">Analytics Dashboard</h1>
-          <p className="text-muted-foreground">
-            Comprehensive business insights and performance metrics
-          </p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-cosmic-dark via-cosmic-light to-cosmic-accent flex">
+      <MainNavigation />
+      <div className="flex-1 p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-cosmic-highlight mb-2">Analytics Dashboard</h1>
+            <p className="text-muted-foreground">
+              Comprehensive business insights and performance metrics
+            </p>
+          </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-card/50 backdrop-blur-sm border-border/50">
-            <TabsTrigger
-              value="finance"
-              className="data-[state=active]:bg-cosmic-accent data-[state=active]:text-cosmic-highlight"
-            >
-              Finance
-            </TabsTrigger>
-            <TabsTrigger
-              value="clients"
-              className="data-[state=active]:bg-cosmic-accent data-[state=active]:text-cosmic-highlight"
-            >
-              Clients
-            </TabsTrigger>
-            <TabsTrigger
-              value="engagement"
-              className="data-[state=active]:bg-cosmic-accent data-[state=active]:text-cosmic-highlight"
-            >
-              Engagement
-            </TabsTrigger>
-          </TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 bg-card/50 backdrop-blur-sm border-border/50">
+              <TabsTrigger
+                value="finance"
+                className="data-[state=active]:bg-cosmic-accent data-[state=active]:text-cosmic-highlight"
+              >
+                Finance
+              </TabsTrigger>
+              <TabsTrigger
+                value="clients"
+                className="data-[state=active]:bg-cosmic-accent data-[state=active]:text-cosmic-highlight"
+              >
+                Clients
+              </TabsTrigger>
+              <TabsTrigger
+                value="engagement"
+                className="data-[state=active]:bg-cosmic-accent data-[state=active]:text-cosmic-highlight"
+              >
+                Engagement
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Finance Tab */}
-          <TabsContent value="finance" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Revenue
-                  </CardTitle>
-                  <DollarSign className="h-4 w-4 text-cosmic-accent" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-cosmic-highlight">
-                    {formatCurrency(totalRevenue)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Last 12 months</p>
-                </CardContent>
-              </Card>
+            {/* Finance Tab */}
+            <TabsContent value="finance" className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total Revenue
+                    </CardTitle>
+                    <DollarSign className="h-4 w-4 text-cosmic-accent" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-cosmic-highlight">
+                      {formatCurrency(totalRevenue)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Last 12 months</p>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Gross Margin
-                  </CardTitle>
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-500">
-                    {formatPercentage(grossMargin)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Profit margin</p>
-                </CardContent>
-              </Card>
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Gross Margin
+                    </CardTitle>
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-500">
+                      {formatPercentage(grossMargin)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Profit margin</p>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">MRR</CardTitle>
-                  <DollarSign className="h-4 w-4 text-cosmic-accent" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-cosmic-highlight">
-                    {mrrData ? formatCurrency(mrrData.monthlyRecurringRevenue) : '$0'}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Monthly recurring revenue</p>
-                </CardContent>
-              </Card>
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">MRR</CardTitle>
+                    <DollarSign className="h-4 w-4 text-cosmic-accent" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-cosmic-highlight">
+                      {mrrData ? formatCurrency(mrrData.monthlyRecurringRevenue) : '$0'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Monthly recurring revenue</p>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    AR Aging
-                  </CardTitle>
-                  <TrendingDown className="h-4 w-4 text-orange-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-orange-500">
-                    {arAgingData ? formatCurrency(arAgingData.totalOutstanding) : '$0'}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Total outstanding</p>
-                </CardContent>
-              </Card>
-            </div>
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      AR Aging
+                    </CardTitle>
+                    <TrendingDown className="h-4 w-4 text-orange-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-500">
+                      {arAgingData ? formatCurrency(arAgingData.totalOutstanding) : '$0'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Total outstanding</p>
+                  </CardContent>
+                </Card>
+              </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                <CardHeader>
-                  <CardTitle className="text-cosmic-highlight">Profit & Loss Trend</CardTitle>
-                  <CardDescription>Revenue, expenses, and profit over time</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={pnlData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis
-                        dataKey="date"
-                        stroke="#9ca3af"
-                        fontSize={12}
-                        tickFormatter={(value) => value.substring(0, 7)}
-                      />
-                      <YAxis stroke="#9ca3af" fontSize={12} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1f2937',
-                          border: '1px solid #374151',
-                          borderRadius: '8px',
-                        }}
-                        formatter={(value: number) => [formatCurrency(value), '']}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke={CHART_COLORS.primary}
-                        strokeWidth={2}
-                        name="Revenue"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="expenses"
-                        stroke={CHART_COLORS.danger}
-                        strokeWidth={2}
-                        name="Expenses"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="profit"
-                        stroke={CHART_COLORS.success}
-                        strokeWidth={2}
-                        name="Profit"
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
+                  <CardHeader>
+                    <CardTitle className="text-cosmic-highlight">Profit & Loss Trend</CardTitle>
+                    <CardDescription>Revenue, expenses, and profit over time</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={pnlData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          dataKey="date"
+                          stroke="#9ca3af"
+                          fontSize={12}
+                          tickFormatter={(value) => value.substring(0, 7)}
+                        />
+                        <YAxis stroke="#9ca3af" fontSize={12} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: '1px solid #374151',
+                            borderRadius: '8px',
+                          }}
+                          formatter={(value: number) => [formatCurrency(value), '']}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke={CHART_COLORS.primary}
+                          strokeWidth={2}
+                          name="Revenue"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="expenses"
+                          stroke={CHART_COLORS.danger}
+                          strokeWidth={2}
+                          name="Expenses"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="profit"
+                          stroke={CHART_COLORS.success}
+                          strokeWidth={2}
+                          name="Profit"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                <CardHeader>
-                  <CardTitle className="text-cosmic-highlight">MRR vs ARR</CardTitle>
-                  <CardDescription>Monthly vs Annual Recurring Revenue</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={mrrData ? [mrrData] : []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#9ca3af" fontSize={12} />
-                      <YAxis stroke="#9ca3af" fontSize={12} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1f2937',
-                          border: '1px solid #374151',
-                          borderRadius: '8px',
-                        }}
-                        formatter={(value: number) => [formatCurrency(value), '']}
-                      />
-                      <Bar
-                        dataKey="monthlyRecurringRevenue"
-                        fill={CHART_COLORS.primary}
-                        name="MRR"
-                        radius={[4, 4, 0, 0]}
-                      />
-                      <Bar
-                        dataKey="annualRecurringRevenue"
-                        fill={CHART_COLORS.secondary}
-                        name="ARR"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
+                  <CardHeader>
+                    <CardTitle className="text-cosmic-highlight">MRR vs ARR</CardTitle>
+                    <CardDescription>Monthly vs Annual Recurring Revenue</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={mrrData ? [mrrData] : []}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="month" stroke="#9ca3af" fontSize={12} />
+                        <YAxis stroke="#9ca3af" fontSize={12} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: '1px solid #374151',
+                            borderRadius: '8px',
+                          }}
+                          formatter={(value: number) => [formatCurrency(value), '']}
+                        />
+                        <Bar
+                          dataKey="monthlyRecurringRevenue"
+                          fill={CHART_COLORS.primary}
+                          name="MRR"
+                          radius={[4, 4, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="annualRecurringRevenue"
+                          fill={CHART_COLORS.secondary}
+                          name="ARR"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                <CardHeader>
-                  <CardTitle className="text-cosmic-highlight">Accounts Receivable Aging</CardTitle>
-                  <CardDescription>Outstanding invoices by aging buckets</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={arAgingData?.buckets || []}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="amount"
-                        label={({ range, amount }) => `${range}: ${formatCurrency(amount)}`}
-                      >
-                        {arAgingData?.buckets.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={getARAgingColor(entry.range)} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: number) => [formatCurrency(value), 'Amount']}
-                        contentStyle={{
-                          backgroundColor: '#1f2937',
-                          border: '1px solid #374151',
-                          borderRadius: '8px',
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
+                  <CardHeader>
+                    <CardTitle className="text-cosmic-highlight">
+                      Accounts Receivable Aging
+                    </CardTitle>
+                    <CardDescription>Outstanding invoices by aging buckets</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={arAgingData?.buckets || []}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="amount"
+                          label={({ range, amount }) => `${range}: ${formatCurrency(amount)}`}
+                        >
+                          {arAgingData?.buckets.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={getARAgingColor(entry.range)} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: number) => [formatCurrency(value), 'Amount']}
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: '1px solid #374151',
+                            borderRadius: '8px',
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                <CardHeader>
-                  <CardTitle className="text-cosmic-highlight">AR Aging Summary</CardTitle>
-                  <CardDescription>Detailed breakdown of outstanding amounts</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {arAgingData?.buckets.map((bucket) => (
-                      <div key={bucket.range} className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: getARAgingColor(bucket.range) }}
-                          />
-                          <span className="text-sm font-medium">{bucket.range} days</span>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-medium">{formatCurrency(bucket.amount)}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {bucket.count} invoices
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
+                  <CardHeader>
+                    <CardTitle className="text-cosmic-highlight">AR Aging Summary</CardTitle>
+                    <CardDescription>Detailed breakdown of outstanding amounts</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {arAgingData?.buckets.map((bucket) => (
+                        <div key={bucket.range} className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: getARAgingColor(bucket.range) }}
+                            />
+                            <span className="text-sm font-medium">{bucket.range} days</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-medium">
+                              {formatCurrency(bucket.amount)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {bucket.count} invoices
+                            </div>
                           </div>
                         </div>
+                      ))}
+                      <div className="border-t pt-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Total Outstanding</span>
+                          <span className="text-lg font-bold text-cosmic-highlight">
+                            {arAgingData ? formatCurrency(arAgingData.totalOutstanding) : '$0'}
+                          </span>
+                        </div>
                       </div>
-                    ))}
-                    <div className="border-t pt-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Total Outstanding</span>
-                        <span className="text-lg font-bold text-cosmic-highlight">
-                          {arAgingData ? formatCurrency(arAgingData.totalOutstanding) : '$0'}
-                        </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Clients Tab */}
+            <TabsContent value="clients" className="space-y-6">
+              <Card className="bg-card/50 backdrop-blur-sm border-border/50">
+                <CardHeader>
+                  <CardTitle className="text-cosmic-highlight">Client Churn Analysis</CardTitle>
+                  <CardDescription>
+                    Monthly churn rates and client retention metrics
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={churnData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          dataKey="month"
+                          stroke="#9ca3af"
+                          fontSize={12}
+                          tickFormatter={(value) => value.substring(0, 7)}
+                        />
+                        <YAxis stroke="#9ca3af" fontSize={12} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: '1px solid #374151',
+                            borderRadius: '8px',
+                          }}
+                          formatter={(value: number, name: string) => {
+                            if (name === 'churnRate')
+                              return [formatPercentage(value), 'Churn Rate'];
+                            return [value, name];
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="activeClients"
+                          stroke={CHART_COLORS.success}
+                          strokeWidth={2}
+                          name="Active Clients"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="churnedClients"
+                          stroke={CHART_COLORS.danger}
+                          strokeWidth={2}
+                          name="Churned Clients"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="churnRate"
+                          stroke={CHART_COLORS.warning}
+                          strokeWidth={2}
+                          name="Churn Rate (%)"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="text-center p-4 bg-card/30 rounded-lg">
+                        <div className="text-2xl font-bold text-cosmic-highlight">
+                          {churnData.reduce((sum, item) => sum + item.activeClients, 0)}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Total Active Clients</div>
+                      </div>
+                      <div className="text-center p-4 bg-card/30 rounded-lg">
+                        <div className="text-2xl font-bold text-red-500">
+                          {churnData.reduce((sum, item) => sum + item.churnedClients, 0)}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Total Churned</div>
+                      </div>
+                      <div className="text-center p-4 bg-card/30 rounded-lg">
+                        <div className="text-2xl font-bold text-orange-500">
+                          {formatPercentage(
+                            churnData.length > 0
+                              ? churnData.reduce((sum, item) => sum + item.churnRate, 0) /
+                                  churnData.length
+                              : 0,
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Avg Churn Rate</div>
                       </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
-          </TabsContent>
+            </TabsContent>
 
-          {/* Clients Tab */}
-          <TabsContent value="clients" className="space-y-6">
-            <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-              <CardHeader>
-                <CardTitle className="text-cosmic-highlight">Client Churn Analysis</CardTitle>
-                <CardDescription>Monthly churn rates and client retention metrics</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
+            {/* Engagement Tab */}
+            <TabsContent value="engagement" className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Active Users
+                    </CardTitle>
+                    <Users className="h-4 w-4 text-cosmic-accent" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-cosmic-highlight">
+                      {engagementData.reduce((sum, item) => sum + item.activeUsers, 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Last 30 days</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total Logins
+                    </CardTitle>
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-500">
+                      {engagementData.reduce((sum, item) => sum + item.totalLogins, 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">User sessions</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Messages Sent
+                    </CardTitle>
+                    <MessageSquare className="h-4 w-4 text-blue-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-500">
+                      {engagementData.reduce((sum, item) => sum + item.messagesSent, 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Service communications</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Deliverables
+                    </CardTitle>
+                    <Package className="h-4 w-4 text-purple-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-purple-500">
+                      {engagementData.reduce((sum, item) => sum + item.deliverablesAccepted, 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Completed work</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className="bg-card/50 backdrop-blur-sm border-border/50">
+                <CardHeader>
+                  <CardTitle className="text-cosmic-highlight">Daily Login Activity</CardTitle>
+                  <CardDescription>User login trends over the past 30 days</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={churnData}>
+                    <LineChart data={engagementData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis
-                        dataKey="month"
+                        dataKey="period"
                         stroke="#9ca3af"
                         fontSize={12}
-                        tickFormatter={(value) => value.substring(0, 7)}
+                        tickFormatter={(value) =>
+                          new Date(value).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        }
                       />
                       <YAxis stroke="#9ca3af" fontSize={12} />
                       <Tooltip
@@ -463,179 +623,30 @@ const Analytics: React.FC = () => {
                           border: '1px solid #374151',
                           borderRadius: '8px',
                         }}
-                        formatter={(value: number, name: string) => {
-                          if (name === 'churnRate') return [formatPercentage(value), 'Churn Rate'];
-                          return [value, name];
-                        }}
+                        labelFormatter={(value) => new Date(value).toLocaleDateString()}
+                        formatter={(value: number, name: string) => [value, name]}
                       />
                       <Line
                         type="monotone"
-                        dataKey="activeClients"
-                        stroke={CHART_COLORS.success}
+                        dataKey="totalLogins"
+                        stroke={CHART_COLORS.primary}
                         strokeWidth={2}
-                        name="Active Clients"
+                        name="Daily Logins"
                       />
                       <Line
                         type="monotone"
-                        dataKey="churnedClients"
-                        stroke={CHART_COLORS.danger}
+                        dataKey="activeUsers"
+                        stroke={CHART_COLORS.secondary}
                         strokeWidth={2}
-                        name="Churned Clients"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="churnRate"
-                        stroke={CHART_COLORS.warning}
-                        strokeWidth={2}
-                        name="Churn Rate (%)"
+                        name="Active Users"
                       />
                     </LineChart>
                   </ResponsiveContainer>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-card/30 rounded-lg">
-                      <div className="text-2xl font-bold text-cosmic-highlight">
-                        {churnData.reduce((sum, item) => sum + item.activeClients, 0)}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Total Active Clients</div>
-                    </div>
-                    <div className="text-center p-4 bg-card/30 rounded-lg">
-                      <div className="text-2xl font-bold text-red-500">
-                        {churnData.reduce((sum, item) => sum + item.churnedClients, 0)}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Total Churned</div>
-                    </div>
-                    <div className="text-center p-4 bg-card/30 rounded-lg">
-                      <div className="text-2xl font-bold text-orange-500">
-                        {formatPercentage(
-                          churnData.length > 0
-                            ? churnData.reduce((sum, item) => sum + item.churnRate, 0) /
-                                churnData.length
-                            : 0,
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Avg Churn Rate</div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Engagement Tab */}
-          <TabsContent value="engagement" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Active Users
-                  </CardTitle>
-                  <Users className="h-4 w-4 text-cosmic-accent" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-cosmic-highlight">
-                    {engagementData.reduce((sum, item) => sum + item.activeUsers, 0)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Last 30 days</p>
                 </CardContent>
               </Card>
-
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Logins
-                  </CardTitle>
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-500">
-                    {engagementData.reduce((sum, item) => sum + item.totalLogins, 0)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">User sessions</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Messages Sent
-                  </CardTitle>
-                  <MessageSquare className="h-4 w-4 text-blue-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-blue-500">
-                    {engagementData.reduce((sum, item) => sum + item.messagesSent, 0)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Service communications</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-colors">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Deliverables
-                  </CardTitle>
-                  <Package className="h-4 w-4 text-purple-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-purple-500">
-                    {engagementData.reduce((sum, item) => sum + item.deliverablesAccepted, 0)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Completed work</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-              <CardHeader>
-                <CardTitle className="text-cosmic-highlight">Daily Login Activity</CardTitle>
-                <CardDescription>User login trends over the past 30 days</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={engagementData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      dataKey="period"
-                      stroke="#9ca3af"
-                      fontSize={12}
-                      tickFormatter={(value) =>
-                        new Date(value).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      }
-                    />
-                    <YAxis stroke="#9ca3af" fontSize={12} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1f2937',
-                        border: '1px solid #374151',
-                        borderRadius: '8px',
-                      }}
-                      labelFormatter={(value) => new Date(value).toLocaleDateString()}
-                      formatter={(value: number, name: string) => [value, name]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="totalLogins"
-                      stroke={CHART_COLORS.primary}
-                      strokeWidth={2}
-                      name="Daily Logins"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="activeUsers"
-                      stroke={CHART_COLORS.secondary}
-                      strokeWidth={2}
-                      name="Active Users"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </div>
   );

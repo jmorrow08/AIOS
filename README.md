@@ -1,4 +1,4 @@
-# AI OS Supabase Shell
+# LytbuB Supabase Shell
 
 A comprehensive **Multi-Tenant React + Vite** application for AI Business Systems OS, built with **Supabase** for authentication, database, and storage. This enterprise-grade platform features complete **Stripe billing integration**, company-specific data isolation, AI agent orchestration, media generation, webhook automation, and advanced business management tools.
 

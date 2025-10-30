@@ -1,5 +1,5 @@
 /**
- * Example usage of webhook hooks in the AI OS application
+ * Example usage of webhook hooks in the LytbuB application
  *
  * This file demonstrates how to integrate webhook triggers into existing
  * API functions and components.

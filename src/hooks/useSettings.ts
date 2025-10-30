@@ -27,11 +27,22 @@ export interface AccountSettings {
   email: string;
 }
 
+export interface RunPodSettings {
+  enable_runpod: boolean;
+  runpod_api_key: string;
+  pod_id: string;
+  ollama_enabled: boolean;
+  comfyui_enabled: boolean;
+  auto_start_services: boolean;
+  preferred_provider: 'local' | 'api' | 'auto';
+}
+
 export interface SettingsData {
   apiKeys: ApiKeys;
   budget: BudgetSettings;
   models: ModelPreferences;
   account: AccountSettings;
+  runpod: RunPodSettings;
 }
 
 export interface UseSettingsReturn {
@@ -46,6 +57,8 @@ export interface UseSettingsReturn {
     value: string | boolean | number,
   ) => Promise<boolean>;
   updateAccountSetting: (key: keyof AccountSettings, value: string) => Promise<boolean>;
+  updateRunPodSetting: (key: keyof RunPodSettings, value: string | boolean) => Promise<boolean>;
+  updateSetting: (key: string, value: string, category?: string) => Promise<boolean>;
   getSetting: (key: string) => string | null;
 }
 
@@ -77,6 +90,15 @@ export const useSettings = (): UseSettingsReturn => {
       display_name: '',
       email: '',
     },
+    runpod: {
+      enable_runpod: false,
+      runpod_api_key: '',
+      pod_id: '',
+      ollama_enabled: false,
+      comfyui_enabled: false,
+      auto_start_services: false,
+      preferred_provider: 'api',
+    },
   };
 
   const loadSettings = useCallback(async () => {
@@ -85,11 +107,12 @@ export const useSettings = (): UseSettingsReturn => {
       setError(null);
 
       // Load all settings categories in parallel
-      const [apiKeysRes, budgetRes, modelRes, accountRes] = await Promise.allSettled([
+      const [apiKeysRes, budgetRes, modelRes, accountRes, runpodRes] = await Promise.allSettled([
         getSettingsByCategory('api_keys'),
         getSettingsByCategory('budget'),
         getSettingsByCategory('models'),
         getSettingsByCategory('account'),
+        getSettingsByCategory('runpod'),
       ]);
 
       const newSettings = { ...defaultSettings };
@@ -147,6 +170,30 @@ export const useSettings = (): UseSettingsReturn => {
           if (setting.value) {
             if (setting.key === 'display_name') {
               newSettings.account.display_name = setting.value;
+            }
+          }
+        });
+      }
+
+      // Process RunPod settings
+      if (runpodRes.status === 'fulfilled' && runpodRes.value.data) {
+        const runpodData = runpodRes.value.data as Setting[];
+        runpodData.forEach((setting: Setting) => {
+          if (setting.value) {
+            if (setting.key === 'enable_runpod') {
+              newSettings.runpod.enable_runpod = setting.value === 'true';
+            } else if (setting.key === 'runpod_api_key') {
+              newSettings.runpod.runpod_api_key = setting.value;
+            } else if (setting.key === 'pod_id') {
+              newSettings.runpod.pod_id = setting.value;
+            } else if (setting.key === 'ollama_enabled') {
+              newSettings.runpod.ollama_enabled = setting.value === 'true';
+            } else if (setting.key === 'comfyui_enabled') {
+              newSettings.runpod.comfyui_enabled = setting.value === 'true';
+            } else if (setting.key === 'auto_start_services') {
+              newSettings.runpod.auto_start_services = setting.value === 'true';
+            } else if (setting.key === 'preferred_provider') {
+              newSettings.runpod.preferred_provider = setting.value as 'local' | 'api' | 'auto';
             }
           }
         });
@@ -304,6 +351,67 @@ export const useSettings = (): UseSettingsReturn => {
     [],
   );
 
+  const updateRunPodSetting = useCallback(
+    async (key: keyof RunPodSettings, value: string | boolean): Promise<boolean> => {
+      try {
+        const result = await upsertSetting(key, {
+          value: value.toString(),
+          category: 'runpod',
+          is_encrypted: key === 'runpod_api_key',
+        });
+
+        if (result.error) {
+          console.error('Error updating RunPod setting:', result.error);
+          return false;
+        }
+
+        // Update local state
+        setSettings((prev) =>
+          prev
+            ? {
+                ...prev,
+                runpod: {
+                  ...prev.runpod,
+                  [key]: value,
+                },
+              }
+            : null,
+        );
+
+        return true;
+      } catch (err) {
+        console.error('Error updating RunPod setting:', err);
+        return false;
+      }
+    },
+    [],
+  );
+
+  const updateSetting = useCallback(
+    async (key: string, value: string, category: string = 'general'): Promise<boolean> => {
+      try {
+        const result = await upsertSetting(key, {
+          value: value || null,
+          category,
+          is_encrypted: key.includes('api_key') || key.includes('secret'),
+        });
+
+        if (result.error) {
+          console.error('Error updating setting:', result.error);
+          return false;
+        }
+
+        // Refresh settings to get updated values
+        await refreshSettings();
+        return true;
+      } catch (err) {
+        console.error('Error updating setting:', err);
+        return false;
+      }
+    },
+    [refreshSettings],
+  );
+
   const getSetting = useCallback(
     (key: string): string | null => {
       if (!settings) return null;
@@ -315,6 +423,8 @@ export const useSettings = (): UseSettingsReturn => {
       if (key in settings.models)
         return settings.models[key as keyof ModelPreferences]?.toString() || null;
       if (key in settings.account) return settings.account[key as keyof AccountSettings];
+      if (key in settings.runpod)
+        return settings.runpod[key as keyof RunPodSettings]?.toString() || null;
 
       return null;
     },
@@ -335,6 +445,8 @@ export const useSettings = (): UseSettingsReturn => {
     updateBudgetSetting,
     updateModelPreference,
     updateAccountSetting,
+    updateRunPodSetting,
+    updateSetting,
     getSetting,
   };
 };

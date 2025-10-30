@@ -39,7 +39,7 @@ const Pricing: React.FC = () => {
     {
       name: 'Free',
       price: { monthly: 0, yearly: 0 },
-      description: 'Perfect for getting started with Jarvis',
+      description: 'Perfect for getting started with LytbuB',
       features: [
         'Up to 5 AI Agents',
         'Basic automation workflows',
@@ -253,9 +253,7 @@ const Pricing: React.FC = () => {
               <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
                 Frequently Asked Questions
               </h2>
-              <p className="text-xl text-cosmic-accent">
-                Everything you need to know about Jarvis AI OS
-              </p>
+              <p className="text-xl text-cosmic-accent">Everything you need to know about LytbuB</p>
             </motion.div>
 
             <motion.div variants={itemVariants} className="text-left">

@@ -140,7 +140,7 @@ const AdminSettings: React.FC = () => {
   const [discordConfig, setDiscordConfig] = useState({
     enabled: false,
     webhook_url: '',
-    username: 'AI OS Bot',
+    username: 'LytbuB Bot',
     avatar_url: '',
     enabled_events: ['budget', 'invoice', 'deliverable', 'system'],
   });
@@ -150,7 +150,7 @@ const AdminSettings: React.FC = () => {
     provider: 'sendgrid',
     api_key: '',
     from_email: '',
-    from_name: 'AI OS',
+    from_name: 'LytbuB',
     enabled_events: ['budget', 'invoice', 'deliverable', 'message'],
     template_ids: {} as Record<string, string>,
   });
@@ -1042,7 +1042,7 @@ const AdminSettings: React.FC = () => {
                         onChange={(e) =>
                           setDiscordConfig((prev) => ({ ...prev, username: e.target.value }))
                         }
-                        placeholder="AI OS Bot"
+                        placeholder="LytbuB Bot"
                         className="bg-white/5 border-white/20 text-white placeholder-cosmic-accent mt-1"
                       />
                     </div>

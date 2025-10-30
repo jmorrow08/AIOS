@@ -1,6 +1,6 @@
 # Compliance & Security Policies Panel
 
-This document provides comprehensive guidance for the Compliance & Security Policies Panel, a enterprise-grade security and compliance management system built into the AI OS Supabase Shell multi-tenant platform.
+This document provides comprehensive guidance for the Compliance & Security Policies Panel, a enterprise-grade security and compliance management system built into the LytbuB Supabase Shell multi-tenant platform.
 
 ## Overview
 

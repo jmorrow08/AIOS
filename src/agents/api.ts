@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logActivity } from '@/api/dashboard';
 
 export type AgentStatus = 'active' | 'inactive';
-export type LLMProvider = 'openai' | 'claude' | 'gemini';
+export type LLMProvider = 'openai' | 'claude' | 'gemini' | 'ollama';
 
 export interface Agent {
   id: string;
@@ -180,17 +180,15 @@ export const getAgents = async (): Promise<AgentResponse> => {
  */
 export const createAgent = async (agentData: CreateAgentData): Promise<AgentResponse> => {
   try {
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .insert([
-        {
-          ...agentData,
-          status: agentData.status || 'active',
-          capabilities_json: agentData.capabilities_json || ['chat'],
-        },
-      ])
-      .select()
-      .single();
+    // Only insert fields that exist in the current database schema
+    // Based on testing, only id, name, role, status exist
+    const insertData = {
+      name: agentData.name,
+      role: agentData.role,
+      status: agentData.status || 'active',
+    };
+
+    const { data, error } = await supabase.from('ai_agents').insert([insertData]).select().single();
 
     if (error) {
       console.error('Error creating agent:', error);

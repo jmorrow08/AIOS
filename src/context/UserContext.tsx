@@ -35,26 +35,64 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserProfile = async (userId: string) => {
     try {
       setError(null);
-      const { data, error } = await supabase
+      console.log('🔍 Fetching user profile for:', userId);
+
+      // First try profiles table
+      let { data, error } = await supabase
         .from('profiles')
         .select('id, email, role, company_name, created_at')
         .eq('id', userId)
         .single();
 
       if (error) {
-        console.error('Error fetching user profile:', error);
-        setError('Failed to load user profile. Please try again.');
-        return null;
+        console.log('⚠️ Profiles table not found or no data, trying users table:', error.message);
+
+        // Fallback to users table
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, email, role, company_id, created_at')
+          .eq('id', userId)
+          .single();
+
+        if (userError) {
+          console.error('❌ Error fetching from users table:', userError);
+          setError('Failed to load user profile. Please try again.');
+          return null;
+        }
+
+        console.log('✅ Found user in users table:', userData);
+        data = {
+          ...userData,
+          company_name: userData.company_id, // Map company_id to company_name for compatibility
+        };
       }
 
+      console.log('✅ User profile loaded:', data);
       setProfile(data);
       setRole(data.role as UserRole);
-      setCompanyId(data.company_name); // Note: using company_name instead of company_id
+      setCompanyId(data.company_name || data.company_id);
       return data;
     } catch (error) {
-      console.error('Error fetching user profile:', error);
+      console.error('❌ Error fetching user profile:', error);
       setError('An unexpected error occurred while loading your profile.');
       return null;
+    }
+  };
+
+  // Small helper to avoid indefinite loading states
+  const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T | null> => {
+    let timeoutId: any;
+    const timeout = new Promise<null>((resolve) => {
+      timeoutId = setTimeout(() => {
+        console.warn(`[UserContext] ${label} timed out after ${ms}ms`);
+        resolve(null);
+      }, ms);
+    });
+    try {
+      const result = (await Promise.race([p, timeout])) as T | null;
+      return result;
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
@@ -76,7 +114,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user || null);
 
       if (session?.user) {
-        await fetchUserProfile(session.user.id);
+        // Kick off profile fetch but don't block UI rendering
+        withTimeout(fetchUserProfile(session.user.id), 8000, 'fetchUserProfile(init)');
       }
 
       setLoading(false);
@@ -89,7 +128,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user || null);
 
       if (session?.user) {
-        await fetchUserProfile(session.user.id);
+        // Fetch profile in background; UI should not be blocked
+        withTimeout(fetchUserProfile(session.user.id), 8000, 'fetchUserProfile(auth-change)');
       } else {
         setRole(null);
         setCompanyId(null);

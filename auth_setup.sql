@@ -1,5 +1,5 @@
 -- =====================
--- Authentication Setup for AI OS
+-- Authentication Setup for LytbuB
 -- =====================
 
 -- Create profiles table to extend Supabase auth.users

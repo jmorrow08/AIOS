@@ -74,7 +74,7 @@ const About: React.FC = () => {
               <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
                 About
                 <span className="block text-3xl md:text-5xl text-cosmic-highlight font-light mt-2">
-                  Jarvis AI OS
+                  LytbuB
                 </span>
               </h1>
               <p className="text-xl md:text-2xl text-cosmic-accent max-w-3xl mx-auto leading-relaxed">
@@ -85,10 +85,10 @@ const About: React.FC = () => {
 
             <motion.div variants={itemVariants} className="mb-16">
               <p className="text-lg text-white/80 max-w-4xl mx-auto leading-relaxed">
-                Jarvis AI OS is a comprehensive business operating system that combines artificial
+                LytbuB is a comprehensive business operating system that combines artificial
                 intelligence with enterprise-grade tools to streamline your operations. From AI
                 agents that handle complex workflows to unified platforms that connect all your
-                business tools, Jarvis provides everything you need to run your business
+                business tools, LytbuB provides everything you need to run your business
                 intelligently.
               </p>
             </motion.div>
@@ -110,7 +110,7 @@ const About: React.FC = () => {
         <section className="py-20 px-4">
           <div className="max-w-7xl mx-auto">
             <motion.div className="text-center mb-16" variants={itemVariants}>
-              <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Why Choose Jarvis?</h2>
+              <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">Why Choose LytbuB?</h2>
               <p className="text-xl text-cosmic-accent max-w-2xl mx-auto">
                 Built for the future of business operations
               </p>

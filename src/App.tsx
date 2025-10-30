@@ -22,7 +22,17 @@ import Analytics from '@/pages/Analytics';
 import Collaboration from '@/pages/Collaboration';
 import Whiteboard from '@/pages/Whiteboard';
 import Settings from '@/pages/Settings';
+import RunPodTest from '@/pages/RunPodTest';
 import AutomationBuilder from '@/pages/AutomationBuilder';
+import Ai from '@/pages/Ai';
+import MissionControl from '@/pages/MissionControl';
+import Contact from '@/pages/Contact';
+import Careers from '@/pages/Careers';
+import Docs from '@/pages/Docs';
+import Privacy from '@/pages/Privacy';
+import Terms from '@/pages/Terms';
+import Support from '@/pages/Support';
+import Cookies from '@/pages/Cookies';
 import { UserProvider } from '@/context/UserContext';
 
 const AppContent: React.FC = () => {
@@ -32,6 +42,13 @@ const AppContent: React.FC = () => {
       <Route path="/" element={<Home />} />
       <Route path="/about" element={<About />} />
       <Route path="/pricing" element={<Pricing />} />
+      <Route path="/contact" element={<Contact />} />
+      <Route path="/careers" element={<Careers />} />
+      <Route path="/docs" element={<Docs />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/cookies" element={<Cookies />} />
+      <Route path="/support" element={<Support />} />
       <Route path="/auth" element={<Auth onAuthSuccess={() => {}} />} />
       <Route path="/login" element={<Auth onAuthSuccess={() => {}} />} />
 
@@ -45,11 +62,11 @@ const AppContent: React.FC = () => {
         }
       />
 
-      {/* Protected routes with role-based access */}
+      {/* Protected routes - all accessible to logged-in users */}
       <Route
         path="/admin"
         element={
-          <ProtectedRoute requiredRole="admin">
+          <ProtectedRoute>
             <AdminPortal />
           </ProtectedRoute>
         }
@@ -58,7 +75,7 @@ const AppContent: React.FC = () => {
       <Route
         path="/dev"
         element={
-          <ProtectedRoute requiredRole="admin">
+          <ProtectedRoute>
             <DevPortal />
           </ProtectedRoute>
         }
@@ -67,7 +84,7 @@ const AppContent: React.FC = () => {
       <Route
         path="/hr"
         element={
-          <ProtectedRoute requiredRole="admin">
+          <ProtectedRoute>
             <HRPortal />
           </ProtectedRoute>
         }
@@ -76,7 +93,7 @@ const AppContent: React.FC = () => {
       <Route
         path="/portal"
         element={
-          <ProtectedRoute requiredRole="client">
+          <ProtectedRoute>
             <ClientPortal />
           </ProtectedRoute>
         }
@@ -103,7 +120,7 @@ const AppContent: React.FC = () => {
       <Route
         path="/lab"
         element={
-          <ProtectedRoute requiredRole="agent">
+          <ProtectedRoute>
             <AiLab />
           </ProtectedRoute>
         }
@@ -155,6 +172,15 @@ const AppContent: React.FC = () => {
       />
 
       <Route
+        path="/runpod-test"
+        element={
+          <ProtectedRoute>
+            <RunPodTest />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/media"
         element={
           <ProtectedRoute>
@@ -193,7 +219,7 @@ const AppContent: React.FC = () => {
       <Route
         path="/analytics"
         element={
-          <ProtectedRoute requiredRole="admin">
+          <ProtectedRoute>
             <Analytics />
           </ProtectedRoute>
         }
@@ -202,8 +228,27 @@ const AppContent: React.FC = () => {
       <Route
         path="/automation"
         element={
-          <ProtectedRoute requiredRole="admin">
+          <ProtectedRoute>
             <AutomationBuilder />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/ai"
+        element={
+          <ProtectedRoute>
+            <Ai />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Mission Control - new main dashboard */}
+      <Route
+        path="/mission-control"
+        element={
+          <ProtectedRoute>
+            <MissionControl />
           </ProtectedRoute>
         }
       />

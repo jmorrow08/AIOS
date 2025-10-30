@@ -1,6 +1,6 @@
 # Stripe Billing Integration
 
-This document provides comprehensive guidance for the Stripe billing integration in the AI OS Supabase Shell multi-tenant platform.
+This document provides comprehensive guidance for the Stripe billing integration in the LytbuB Supabase Shell multi-tenant platform.
 
 ## Overview
 

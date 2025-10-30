@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MainNavigation } from '@/components/MainNavigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Document, EditorMode } from '@/lib/types';
 import {
@@ -202,91 +203,94 @@ const KnowledgeLibrary: React.FC = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col p-6 bg-cosmic-dark">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          <BookOpen className="w-8 h-8 text-cosmic-accent" />
-          <h1 className="text-3xl font-bold text-white">Knowledge Library</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleCreateDocument}
-            className="bg-cosmic-accent hover:bg-cosmic-highlight"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Document
-          </Button>
-          <Button
-            onClick={() => loadDocuments()}
-            variant="outline"
-            className="text-white border-cosmic-accent hover:bg-cosmic-accent"
-          >
-            <Loader2 className={`w-4 h-4 mr-2 ${isLoadingDocuments ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {/* Main Content - Two Pane Layout */}
-      <div className="flex-1 flex gap-6 overflow-hidden">
-        {/* Left Pane - Document List */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <Card className="bg-cosmic-dark border-cosmic-light flex-1 flex flex-col overflow-hidden">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-white flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Documents ({documents.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-hidden">
-              <DocumentList
-                documents={documents}
-                isLoading={isLoadingDocuments}
-                onDocumentSelect={handleDocumentSelect}
-                onDocumentEdit={handleDocumentEdit}
-                onDocumentDelete={deleteDocument}
-                onSummarize={handleSummarizeDocument}
-                selectedDocumentId={selectedDocument?.id}
-              />
-            </CardContent>
-          </Card>
+    <div className="h-screen flex bg-cosmic-dark">
+      <MainNavigation />
+      <div className="flex-1 flex flex-col p-6">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <BookOpen className="w-8 h-8 text-cosmic-accent" />
+            <h1 className="text-3xl font-bold text-white">Knowledge Library</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleCreateDocument}
+              className="bg-cosmic-accent hover:bg-cosmic-highlight"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New Document
+            </Button>
+            <Button
+              onClick={() => loadDocuments()}
+              variant="outline"
+              className="text-white border-cosmic-accent hover:bg-cosmic-accent"
+            >
+              <Loader2 className={`w-4 h-4 mr-2 ${isLoadingDocuments ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
-        {/* Right Pane - Editor */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {editorMode ? (
-            <DocEditor
-              document={selectedDocument}
-              mode={editorMode}
-              isLoading={isSaving}
-              onSave={saveDocument}
-              onCancel={handleCancelEdit}
-              onGenerateAIDraft={handleGenerateAIDraft}
-            />
-          ) : (
-            <Card className="bg-cosmic-dark border-cosmic-light h-full flex flex-col">
-              <CardContent className="flex-1 flex items-center justify-center">
-                <div className="text-center text-gray-400">
-                  <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <h3 className="text-xl font-medium text-white mb-2">
-                    {selectedDocument ? 'Select an action' : 'Select a document'}
-                  </h3>
-                  <p className="text-sm">
-                    {selectedDocument
-                      ? 'Choose to view, edit, or summarize the selected document.'
-                      : 'Choose a document from the list to view or edit it.'}
-                  </p>
-                </div>
+        {/* Main Content - Two Pane Layout */}
+        <div className="flex-1 flex gap-6 overflow-hidden">
+          {/* Left Pane - Document List */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <Card className="bg-cosmic-dark border-cosmic-light flex-1 flex flex-col overflow-hidden">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Documents ({documents.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-hidden">
+                <DocumentList
+                  documents={documents}
+                  isLoading={isLoadingDocuments}
+                  onDocumentSelect={handleDocumentSelect}
+                  onDocumentEdit={handleDocumentEdit}
+                  onDocumentDelete={deleteDocument}
+                  onSummarize={handleSummarizeDocument}
+                  selectedDocumentId={selectedDocument?.id}
+                />
               </CardContent>
             </Card>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Q&A Widget */}
-      <div className="mt-6">
-        <QnAWidget documents={documents} onAskQuestion={handleAskQuestion} />
+          {/* Right Pane - Editor */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {editorMode ? (
+              <DocEditor
+                document={selectedDocument}
+                mode={editorMode}
+                isLoading={isSaving}
+                onSave={saveDocument}
+                onCancel={handleCancelEdit}
+                onGenerateAIDraft={handleGenerateAIDraft}
+              />
+            ) : (
+              <Card className="bg-cosmic-dark border-cosmic-light h-full flex flex-col">
+                <CardContent className="flex-1 flex items-center justify-center">
+                  <div className="text-center text-gray-400">
+                    <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                    <h3 className="text-xl font-medium text-white mb-2">
+                      {selectedDocument ? 'Select an action' : 'Select a document'}
+                    </h3>
+                    <p className="text-sm">
+                      {selectedDocument
+                        ? 'Choose to view, edit, or summarize the selected document.'
+                        : 'Choose a document from the list to view or edit it.'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        {/* Q&A Widget */}
+        <div className="mt-6">
+          <QnAWidget documents={documents} onAskQuestion={handleAskQuestion} />
+        </div>
       </div>
     </div>
   );

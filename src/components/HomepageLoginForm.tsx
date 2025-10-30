@@ -51,7 +51,7 @@ const HomepageLoginForm: React.FC<HomepageLoginFormProps> = ({ onLoginSuccess })
       <div className="p-6">
         <div className="text-center mb-6">
           <h3 className="text-xl font-bold text-white mb-2">Welcome Back</h3>
-          <p className="text-cosmic-accent text-sm">Sign in to access Jarvis HQ</p>
+          <p className="text-cosmic-accent text-sm">Sign in to access LytbuB HQ</p>
         </div>
 
         {error && (

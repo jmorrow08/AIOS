@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
-import { RadialMenu } from '@/components/RadialMenu';
+import { MainNavigation } from '@/components/MainNavigation';
 import { CosmicBackground } from '@/components/CosmicBackground';
 import InvoiceForm, { InvoiceFormData } from '@/components/InvoiceForm';
 import UsageBar from '@/components/UsageBar';
@@ -345,14 +345,13 @@ const FinancialNexus: React.FC = () => {
 
   // Main Component
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden flex">
+      <MainNavigation />
       {/* cosmic background */}
       <CosmicBackground />
-      {/* radial menu */}
-      <RadialMenu />
 
       {/* main content */}
-      <div className="p-8 pt-24 max-w-7xl mx-auto">
+      <div className="flex-1 p-8 pt-24 max-w-7xl mx-auto">
         <div className="space-y-8">
           {/* Header */}
           <div className="flex justify-between items-center">

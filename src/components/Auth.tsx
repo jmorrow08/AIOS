@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { CosmicBackground } from './CosmicBackground';
 import { applyIPRestrictions } from '@/api/compliance';
@@ -8,6 +9,7 @@ interface AuthProps {
 }
 
 const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -18,6 +20,112 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
     role: 'client' as 'admin' | 'employee' | 'client',
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Map a role string to the correct dashboard route
+  const getDashboardRoute = (role: string | null | undefined): string => {
+    switch (role) {
+      case 'admin':
+        return '/admin';
+      case 'client':
+        return '/portal';
+      case 'agent':
+        return '/lab';
+      case 'marketing_agent':
+        return '/marketing';
+      default:
+        return '/landing';
+    }
+  };
+
+  // Fetch role from profiles first, fall back to users table if profiles not available
+  const getUserRole = async (userId: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (!error && data) {
+        console.log('[Auth] Role from profiles:', data.role);
+        return data.role as string;
+      }
+
+      console.log('[Auth] Profiles lookup failed, falling back to users table:', error?.message);
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (!userError && userData) {
+        console.log('[Auth] Role from users table:', userData.role);
+        return userData.role as string;
+      }
+
+      console.warn('[Auth] Could not determine role for user:', userError?.message);
+      return null;
+    } catch (err) {
+      console.error('[Auth] Error determining user role:', err);
+      return null;
+    }
+  };
+
+  const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
+    let timeoutId: any;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    try {
+      const result = await Promise.race([p, timeout]);
+      return result as T;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  // Session bootstrap + react to auth state changes
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      console.log('[Auth] Checking existing session...');
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (session?.user) {
+        console.log('[Auth] Existing session detected for user:', session.user.id);
+        const role = await getUserRole(session.user.id);
+        const to = getDashboardRoute(role);
+        console.log('[Auth] Redirecting (already authenticated) to:', to);
+        navigate(to, { replace: true });
+      }
+    })();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth] onAuthStateChange:', event, 'user?', !!session?.user);
+      if (event === 'SIGNED_IN' && session?.user) {
+        try {
+          const role = await withTimeout(getUserRole(session.user.id), 8000, 'getUserRole');
+          // Force master view for now
+          const to = '/admin';
+          console.log('[Auth] Redirecting (SIGNED_IN) to:', to, '(role:', role, ')');
+          navigate(to, { replace: true });
+        } catch (err) {
+          console.warn(
+            '[Auth] Role fetch failed; redirecting to /admin. Error:',
+            (err as Error).message,
+          );
+          navigate('/admin', { replace: true });
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   const getClientIP = async (): Promise<string> => {
     try {
@@ -40,45 +148,46 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
 
     try {
       if (isLogin) {
-        // Get client IP for security check
-        const clientIP = await getClientIP();
+        console.log('🔐 Attempting login for:', formData.email);
 
-        // First, attempt to get user data to check IP restrictions
-        // Note: In a production app, this IP check should be done server-side
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        // Add timeout protection in case the network hangs
+        const signInPromise = supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Login timed out. Check network and Supabase env.')),
+            15000,
+          ),
+        );
+        const result: any = await Promise.race([signInPromise, timeoutPromise]);
+        const authData = result as { user?: { id: string } };
+        const authError = (result as any)?.error as any;
 
-        if (authError) throw authError;
-
-        // If login successful, check IP restrictions
-        if (authData.user) {
-          // Get user's company to check IP restrictions
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('company_id')
-            .eq('id', authData.user.id)
-            .single();
-
-          if (!userError && userData?.company_id) {
-            const { allowed, error: ipError } = await applyIPRestrictions(
-              authData.user.id,
-              clientIP,
-            );
-
-            if (!allowed) {
-              // Sign out the user if IP not allowed
-              await supabase.auth.signOut();
-              throw new Error(
-                ipError || 'Access denied from this IP address. Please contact your administrator.',
-              );
-            }
-          }
+        if (authError) {
+          console.error('❌ Auth error:', authError);
+          throw authError;
         }
 
-        setMessage({ type: 'success', text: 'Login successful!' });
-        setTimeout(onAuthSuccess, 1000);
+        const userId = authData?.user?.id;
+        console.log('✅ Auth successful, user:', userId);
+
+        setMessage({ type: 'success', text: 'Login successful! Redirecting…' });
+
+        // Determine dashboard route by role and navigate
+        try {
+          const role = userId ? await withTimeout(getUserRole(userId), 8000, 'getUserRole') : null;
+          const to = '/admin';
+          console.log('🚀 Redirecting to:', to, 'for role:', role);
+          navigate(to, { replace: true });
+        } catch (err) {
+          console.warn(
+            '[Auth] Role fetch failed after login; redirecting to /admin. Error:',
+            (err as Error).message,
+          );
+          navigate('/admin', { replace: true });
+        }
       } else {
         const { error } = await supabase.auth.signUp({
           email: formData.email,
@@ -120,7 +229,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
       <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
         <div className="bg-cosmic-light bg-opacity-10 backdrop-blur-sm rounded-lg p-8 w-full max-w-md shadow-2xl border border-cosmic-accent/20">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-cosmic-highlight mb-2">AI OS</h1>
+            <h1 className="text-3xl font-bold text-cosmic-highlight mb-2">LytbuB</h1>
             <p className="text-cosmic-accent">Business Operating System</p>
           </div>
 

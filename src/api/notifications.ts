@@ -230,7 +230,7 @@ export const sendSlackNotification = async (
 
     const payload = {
       channel: channel || config.config.channel || '#general',
-      username: 'AI OS Bot',
+      username: 'LytbuB Bot',
       text: message,
       icon_emoji: ':robot_face:',
     };
@@ -281,16 +281,16 @@ export const sendDiscordNotification = async (
     }
 
     const payload = {
-      username: config.config.username || 'AI OS Bot',
+      username: config.config.username || 'LytbuB Bot',
       avatar_url: config.config.avatar_url,
       embeds: [
         {
-          title: 'AI OS Notification',
+          title: 'LytbuB Notification',
           description: message,
           color: 0x5d8bf4, // Cosmic accent color
           timestamp: new Date().toISOString(),
           footer: {
-            text: 'AI OS',
+            text: 'LytbuB',
           },
         },
       ],
@@ -356,7 +356,7 @@ export const sendEmailNotification = async (
         response = await sendSendGridEmail(
           config.config.api_key,
           config.config.from_email,
-          config.config.from_name || 'AI OS',
+          config.config.from_name || 'LytbuB',
           userProfile.email,
           subject,
           body,
@@ -593,19 +593,19 @@ const sendExternalNotifications = async (
 
 // Test notification functions
 export const testSlackNotification = async (): Promise<ApiResponse<boolean>> => {
-  const testMessage = '🧪 Test notification from AI OS - Slack integration is working!';
+  const testMessage = '🧪 Test notification from LytbuB - Slack integration is working!';
   return sendSlackNotification('#general', testMessage);
 };
 
 export const testDiscordNotification = async (): Promise<ApiResponse<boolean>> => {
-  const testMessage = '🧪 Test notification from AI OS - Discord integration is working!';
+  const testMessage = '🧪 Test notification from LytbuB - Discord integration is working!';
   return sendDiscordNotification('', testMessage); // Will use config webhook
 };
 
 export const testEmailNotification = async (userId?: string): Promise<ApiResponse<boolean>> => {
-  const testSubject = '🧪 AI OS Email Test';
+  const testSubject = '🧪 LytbuB Email Test';
   const testBody =
-    '<h2>Test Email</h2><p>This is a test notification from AI OS. Your email integration is working!</p>';
+    '<h2>Test Email</h2><p>This is a test notification from LytbuB. Your email integration is working!</p>';
 
   // If no userId provided, try to get the current user's ID
   if (!userId) {
@@ -622,7 +622,7 @@ export const testEmailNotification = async (userId?: string): Promise<ApiRespons
 };
 
 export const testSMSNotification = async (phoneNumber?: string): Promise<ApiResponse<boolean>> => {
-  const testMessage = 'Test SMS from AI OS - SMS integration is working!';
+  const testMessage = 'Test SMS from LytbuB - SMS integration is working!';
 
   if (!phoneNumber) {
     return { data: false, error: 'Phone number required for SMS test' };

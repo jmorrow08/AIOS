@@ -38,6 +38,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CosmicBackground } from '@/components/CosmicBackground';
 import { useUser } from '@/context/UserContext';
+import { supabase } from '@/lib/supabaseClient';
 
 import { AutomationFlow, AutomationNode, FlowNode, FlowEdge, NodeConfig } from '@/lib/types';
 
@@ -53,7 +54,18 @@ import {
   testAutomationFlow,
 } from '@/api/automation';
 
-import { Plus, Play, Settings, Trash2, Edit, Eye, EyeOff } from 'lucide-react';
+import {
+  Plus,
+  Play,
+  Settings,
+  Trash2,
+  Edit,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 
 // Custom Node Components
 const TriggerNode: React.FC<{ data: any }> = ({ data }) => (
@@ -100,6 +112,8 @@ const AutomationBuilder: React.FC = () => {
   const [testPayload, setTestPayload] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [n8nConnected, setN8nConnected] = useState(false);
+  const [n8nUrl, setN8nUrl] = useState<string | null>(null);
 
   // Flow form state
   const [flowForm, setFlowForm] = useState({
@@ -192,10 +206,59 @@ const AutomationBuilder: React.FC = () => {
     [],
   );
 
-  // Load flows on component mount
+  // Load flows and check n8n connectivity on component mount
   useEffect(() => {
     loadFlows();
+    checkN8nConnectivity();
   }, []);
+
+  // Check n8n connectivity
+  const checkN8nConnectivity = async () => {
+    try {
+      // Get n8n settings from database
+      const { data: n8nBaseUrlSetting, error: urlError } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'n8n_base_url')
+        .single();
+
+      const { data: n8nApiKeySetting, error: keyError } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'n8n_api_key')
+        .single();
+
+      if (urlError || keyError || !n8nBaseUrlSetting?.value) {
+        setN8nConnected(false);
+        setN8nUrl(null);
+        return;
+      }
+
+      const baseUrl = n8nBaseUrlSetting.value;
+      const apiKey = n8nApiKeySetting?.value;
+
+      // Test connection by making a simple request to n8n API
+      const testUrl = `${baseUrl.replace(/\/$/, '')}/rest/workflows`;
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        headers: {
+          'X-N8N-API-KEY': apiKey || '',
+        },
+      });
+
+      if (response.ok) {
+        setN8nConnected(true);
+        setN8nUrl(baseUrl);
+      } else {
+        setN8nConnected(false);
+        setN8nUrl(baseUrl); // Still show URL even if not connected
+      }
+    } catch (error) {
+      console.error('Error checking n8n connectivity:', error);
+      setN8nConnected(false);
+      setN8nUrl(null);
+    }
+  };
 
   // Load nodes when flow is selected
   useEffect(() => {
@@ -357,14 +420,54 @@ const AutomationBuilder: React.FC = () => {
 
       <div className="relative z-10 container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Automation Builder</h1>
-          <p className="text-cosmic-accent text-lg">
-            Create no-code automation flows to streamline your business processes
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-white mb-2">Automation Builder</h1>
+              <p className="text-cosmic-accent text-lg">
+                Create no-code automation flows to streamline your business processes
+              </p>
+            </div>
+
+            {/* n8n Connection Status */}
+            <div className="flex items-center space-x-3">
+              <div
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
+                  n8nConnected
+                    ? 'bg-green-900/20 border border-green-500/30'
+                    : 'bg-red-900/20 border border-red-500/30'
+                }`}
+              >
+                {n8nConnected ? (
+                  <Wifi className="w-4 h-4 text-green-400" />
+                ) : (
+                  <WifiOff className="w-4 h-4 text-red-400" />
+                )}
+                <span
+                  className={`text-sm font-medium ${
+                    n8nConnected ? 'text-green-400' : 'text-red-400'
+                  }`}
+                >
+                  {n8nConnected ? 'n8n Connected' : 'n8n Disconnected'}
+                </span>
+              </div>
+
+              {n8nUrl && (
+                <a
+                  href={n8nUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="text-sm font-medium">Open n8n</span>
+                </a>
+              )}
+            </div>
+          </div>
         </div>
 
         <Tabs defaultValue="flows" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-white/10 backdrop-blur-sm">
+          <TabsList className="grid w-full grid-cols-3 bg-white/10 backdrop-blur-sm">
             <TabsTrigger value="flows" className="text-white data-[state=active]:bg-cosmic-accent">
               Flow Management
             </TabsTrigger>
@@ -373,6 +476,9 @@ const AutomationBuilder: React.FC = () => {
               className="text-white data-[state=active]:bg-cosmic-accent"
             >
               Flow Builder
+            </TabsTrigger>
+            <TabsTrigger value="n8n" className="text-white data-[state=active]:bg-cosmic-accent">
+              n8n Studio
             </TabsTrigger>
           </TabsList>
 
@@ -631,6 +737,77 @@ const AutomationBuilder: React.FC = () => {
               <Card className="bg-white/10 backdrop-blur-sm border-white/20">
                 <CardContent className="flex items-center justify-center h-64">
                   <p className="text-cosmic-accent">Select a flow to start building</p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="n8n" className="mt-6">
+            {n8nUrl ? (
+              <Card className="bg-white/10 backdrop-blur-sm border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center space-x-2">
+                    <span>n8n Workflow Studio</span>
+                    {n8nConnected ? (
+                      <Wifi className="w-5 h-5 text-green-400" />
+                    ) : (
+                      <WifiOff className="w-5 h-5 text-red-400" />
+                    )}
+                  </CardTitle>
+                  <CardDescription className="text-cosmic-accent">
+                    {n8nConnected
+                      ? 'Connected to your n8n instance. Create and manage automation workflows.'
+                      : 'n8n connection not available. Please check your settings.'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {n8nConnected ? (
+                    <div className="relative">
+                      <iframe
+                        src={n8nUrl}
+                        className="w-full h-[800px] border-0 rounded-lg"
+                        title="n8n Workflow Studio"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+                      />
+                      <div className="absolute top-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm">
+                        n8n Studio
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-64 bg-white/5 rounded-lg">
+                      <div className="text-center">
+                        <WifiOff className="w-16 h-16 mx-auto mb-4 text-red-400" />
+                        <h3 className="text-xl font-semibold text-white mb-2">n8n Not Connected</h3>
+                        <p className="text-cosmic-accent mb-4">
+                          Please configure your n8n settings to access the workflow studio.
+                        </p>
+                        <button
+                          onClick={() => (window.location.href = '/settings')}
+                          className="bg-cosmic-accent hover:bg-cosmic-accent/80 text-white px-4 py-2 rounded-lg transition"
+                        >
+                          Go to Settings
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="bg-white/10 backdrop-blur-sm border-white/20">
+                <CardContent className="flex items-center justify-center h-64">
+                  <div className="text-center">
+                    <Settings className="w-16 h-16 mx-auto mb-4 text-cosmic-accent" />
+                    <h3 className="text-xl font-semibold text-white mb-2">n8n Not Configured</h3>
+                    <p className="text-cosmic-accent mb-4">
+                      Please set up your n8n base URL and API key in settings.
+                    </p>
+                    <button
+                      onClick={() => (window.location.href = '/settings')}
+                      className="bg-cosmic-accent hover:bg-cosmic-accent/80 text-white px-4 py-2 rounded-lg transition"
+                    >
+                      Configure n8n
+                    </button>
+                  </div>
                 </CardContent>
               </Card>
             )}
