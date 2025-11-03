@@ -130,3 +130,4 @@ Models are categorized by their strengths and use cases:
 - `401`: Invalid or missing authentication
 - `400`: User has no company association
 - `500`: Internal server error
+
